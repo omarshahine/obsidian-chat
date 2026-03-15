@@ -1,9 +1,1 @@
-{
-  "id": "obsidian-chat",
-  "name": "Obsidian Chat",
-  "version": "1.0.0",
-  "minAppVersion": "1.7.0",
-  "description": "Agentic AI chat assistant that reads, edits, and creates notes through natural conversation",
-  "author": "Omar Shahine",
-  "isDesktopOnly": false
-}
+{"id":"obsidian-chat","name":"Obsidian Chat","version":"1.0.1","minAppVersion":"1.7.0","description":"Agentic AI chat assistant that reads, edits, and creates notes through natural conversation","author":"Omar Shahine","isDesktopOnly":false}
