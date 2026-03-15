@@ -266,7 +266,7 @@ export default class ChatPlugin extends Plugin {
 
   private loadApiKey(provider: string): string {
     try {
-      return this.app.secretStorage.getSecret(`ochat-api-key-${provider}`) || "";
+      return this.app.secretStorage.getSecret(`obsidian-chat-api-key-${provider}`) || "";
     } catch {
       return "";
     }
@@ -274,7 +274,7 @@ export default class ChatPlugin extends Plugin {
 
   private saveApiKey(provider: string, key: string): void {
     try {
-      this.app.secretStorage.setSecret(`ochat-api-key-${provider}`, key);
+      this.app.secretStorage.setSecret(`obsidian-chat-api-key-${provider}`, key);
     } catch {
       // SecretStorage not available
     }
