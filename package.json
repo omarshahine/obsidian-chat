@@ -1,0 +1,20 @@
+{
+  "name": "obsidian-chat",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "node esbuild.config.mjs production",
+    "svelte-check": "svelte-check --tsconfig tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.24.0",
+    "esbuild-svelte": "^0.9.4",
+    "obsidian": "^1.7.2",
+    "svelte": "^5.53.12",
+    "svelte-check": "^4.4.5",
+    "svelte-preprocess": "^6.0.3",
+    "typescript": "^5.7.0"
+  }
+}

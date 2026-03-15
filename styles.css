@@ -1,0 +1,15 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Obsidian Chat — Global styles (outside Svelte component scope)
+   Component styles live in ChatContainer.svelte with scoped CSS.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.ochat-view-container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Desktop sidebar min-width */
+.workspace-leaf-content[data-type="ochat-view"] {
+  min-width: 280px;
+}

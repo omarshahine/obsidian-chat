@@ -1,0 +1,260 @@
+import { App } from "obsidian";
+import type {
+  ChatSettings,
+  UnifiedMessage,
+  ContentBlock,
+  AgentCallbacks,
+  SelectionScope,
+} from "../types";
+import { sendMessage } from "../api/client";
+import { clearOpenAIState } from "../api/openai";
+import { TOOL_DEFINITIONS } from "../tools/registry";
+import { executeTool } from "../tools/executor";
+import { buildContext } from "./context";
+import { buildSystemPrompt, buildContextMessage } from "./system-prompt";
+
+const MAX_CONVERSATION_LENGTH = 50;
+const KEEP_RECENT = 40;
+
+// Debug logging: writes transcript to the vault's plugin config folder
+const DEBUG = true;
+
+function debugLog(app: App, label: string, data: unknown): void {
+  if (!DEBUG) return;
+  try {
+    const timestamp = new Date().toISOString();
+    const entry = `\n--- ${label} [${timestamp}] ---\n${JSON.stringify(data, null, 2)}\n`;
+    // Use the adapter to write outside the vault
+    app.vault.adapter.append(
+      ".obsidian/plugins/obsidian-chat/debug.log",
+      entry
+    );
+  } catch {
+    // Debug logging should never break the app
+  }
+}
+
+/**
+ * The core agentic loop:
+ * 1. Send user message + history to API
+ * 2. If response contains tool_use, execute tools, append results, loop
+ * 3. If response is end_turn, deliver text to user, done
+ * 4. Safety: stop after maxIterations to prevent runaway loops
+ */
+export class AgentLoop {
+  private messages: UnifiedMessage[] = [];
+  private app: App;
+  private settings: ChatSettings;
+  private aborted = false;
+
+  constructor(app: App, settings: ChatSettings) {
+    this.app = app;
+    this.settings = settings;
+  }
+
+  /** Abort a running loop (e.g. user navigates away) */
+  abort(): void {
+    this.aborted = true;
+  }
+
+  /** Clear conversation history */
+  clear(): void {
+    this.messages = [];
+    this.aborted = false;
+    clearOpenAIState();
+  }
+
+  /** Export the full conversation as a readable markdown transcript */
+  exportTranscript(): string {
+    const systemPrompt = buildSystemPrompt(this.settings.systemPromptOverride);
+
+    const parts: string[] = [
+      `# Obsidian Chat Transcript`,
+      ``,
+      `**Date:** ${new Date().toISOString()}`,
+      `**Provider:** ${this.settings.provider}`,
+      `**Model:** ${this.settings.model}`,
+      ``,
+      `## System Prompt`,
+      ``,
+      "```",
+      systemPrompt,
+      "```",
+      ``,
+      `## Conversation`,
+      ``,
+    ];
+
+    for (const msg of this.messages) {
+      if (typeof msg.content === "string") {
+        parts.push(`### ${msg.role === "user" ? "User" : "Assistant"}`);
+        parts.push(``);
+        parts.push(msg.content);
+        parts.push(``);
+      } else {
+        // Content blocks
+        for (const block of msg.content) {
+          if (block.type === "text" && block.text) {
+            parts.push(`### Assistant`);
+            parts.push(``);
+            parts.push(block.text);
+            parts.push(``);
+          } else if (block.type === "tool_use") {
+            parts.push(`### Tool Call: \`${block.name}\``);
+            parts.push(``);
+            parts.push("```json");
+            parts.push(JSON.stringify(block.input, null, 2));
+            parts.push("```");
+            parts.push(``);
+          } else if (block.type === "tool_result") {
+            parts.push(`### Tool Result ${block.is_error ? "(ERROR)" : ""}`);
+            parts.push(``);
+            parts.push("```");
+            parts.push(block.content || "(empty)");
+            parts.push("```");
+            parts.push(``);
+          }
+        }
+      }
+    }
+
+    return parts.join("\n");
+  }
+
+  /** Run one user turn through the agentic loop */
+  async run(
+    userMessage: string,
+    callbacks: AgentCallbacks,
+    selection?: SelectionScope | null
+  ): Promise<void> {
+    this.aborted = false;
+
+    // Build context once per user turn and prepend to the user message
+    const context = buildContext(this.app);
+    const contextPrefix = buildContextMessage(context);
+
+    // If there's a selection, inject it as scoped context
+    let fullMessage: string;
+    if (selection) {
+      fullMessage = [
+        contextPrefix,
+        "",
+        `[Selection scope: The user has selected text in ${selection.filePath}. Work only within this selection. When using edit_document, use find_replace with text from within this selection. Do not modify text outside the selection.]`,
+        "",
+        `Selected text:`,
+        `> ${selection.text}`,
+        "",
+        userMessage,
+      ].join("\n");
+    } else {
+      fullMessage = `${contextPrefix}\n\n${userMessage}`;
+    }
+
+    this.messages.push({ role: "user", content: fullMessage });
+
+    // Prune if conversation is too long
+    this.pruneHistory();
+
+    // System prompt is static (cache-friendly). Built once, identical every call.
+    const systemPrompt = buildSystemPrompt(this.settings.systemPromptOverride);
+
+    debugLog(this.app, "USER_MESSAGE", { userMessage, hasSelection: !!selection });
+
+    const maxIterations = this.settings.maxIterations || 20;
+
+    for (let i = 0; i < maxIterations; i++) {
+      if (this.aborted) return;
+
+      callbacks.onThinking();
+
+      let response;
+      try {
+        response = await sendMessage(
+          this.settings,
+          this.messages,
+          TOOL_DEFINITIONS,
+          systemPrompt
+        );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        debugLog(this.app, "API_ERROR", { error: msg, model: this.settings.model, provider: this.settings.provider });
+        callbacks.onError(msg);
+        return;
+      }
+
+      debugLog(this.app, "API_RESPONSE", { stopReason: response.stopReason, contentTypes: response.content.map(b => b.type), usage: response.usage });
+
+      if (this.aborted) return;
+
+      // Process response content blocks
+      const toolCalls: ContentBlock[] = [];
+      const textParts: string[] = [];
+
+      for (const block of response.content) {
+        if (block.type === "text" && block.text) {
+          textParts.push(block.text);
+        } else if (block.type === "tool_use") {
+          toolCalls.push(block);
+        }
+      }
+
+      // Emit any text before tool calls (skip if ask_user is coming to avoid
+      // rendering the question twice: once as text and once via showAskUser)
+      const hasAskUser = toolCalls.some((tc) => tc.name === "ask_user");
+      if (textParts.length > 0 && toolCalls.length > 0 && !hasAskUser) {
+        callbacks.onResponse(textParts.join(""));
+      }
+
+      // Append assistant message to history
+      this.messages.push({ role: "assistant", content: response.content });
+
+      // If no tool calls, we're done
+      if (toolCalls.length === 0) {
+        if (textParts.length > 0) {
+          callbacks.onResponse(textParts.join(""));
+        }
+        return;
+      }
+
+      // Execute tool calls and collect results
+      const resultBlocks: ContentBlock[] = [];
+
+      for (const tc of toolCalls) {
+        if (this.aborted) return;
+
+        callbacks.onToolCall(tc.name!, tc.input!);
+
+        const result = await executeTool(
+          this.app,
+          tc.name!,
+          tc.input!,
+          callbacks.onAskUser
+        );
+
+        callbacks.onToolResult(tc.name!, result);
+
+        resultBlocks.push({
+          type: "tool_result",
+          tool_use_id: tc.id,
+          content: result.result,
+          is_error: result.isError,
+        });
+      }
+
+      // Append tool results as user message
+      this.messages.push({ role: "user", content: resultBlocks });
+    }
+
+    // If we get here, we hit the iteration limit
+    callbacks.onError(
+      `Reached maximum iterations (${maxIterations}). The task may be too complex for a single conversation turn.`
+    );
+  }
+
+  /** Drop oldest messages when conversation gets too long, keeping recent context */
+  private pruneHistory(): void {
+    if (this.messages.length > MAX_CONVERSATION_LENGTH) {
+      this.messages = this.messages.slice(-KEEP_RECENT);
+    }
+  }
+}

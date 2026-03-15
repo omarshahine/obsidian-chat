@@ -1,0 +1,351 @@
+import { App, TFile, normalizePath } from "obsidian";
+import type { ToolResult } from "../types";
+
+type AskUserCallback = (question: string) => Promise<string>;
+
+/**
+ * Executes a tool call against the Obsidian Vault API.
+ * Uses docs-recommended patterns:
+ * - getFileByPath() for direct file lookups
+ * - cachedRead() for display-only reads
+ * - vault.process() for atomic edits
+ * - fileManager.renameFile() for link-aware renames
+ * - vault.trash() for safe deletes
+ */
+export async function executeTool(
+  app: App,
+  toolName: string,
+  input: Record<string, unknown>,
+  onAskUser: AskUserCallback
+): Promise<ToolResult> {
+  try {
+    switch (toolName) {
+      case "read_document":
+        return await readDocument(app, input);
+      case "edit_document":
+        return await editDocument(app, input);
+      case "search_vault":
+        return await searchVault(app, input);
+      case "read_file":
+        return await readFile(app, input);
+      case "create_file":
+        return await createFile(app, input);
+      case "list_files":
+        return await listFiles(app, input);
+      case "rename_file":
+        return await renameFile(app, input);
+      case "delete_file":
+        return await deleteFile(app, input);
+      case "ask_user":
+        return await askUser(input, onAskUser);
+      default:
+        return { result: `Unknown tool: ${toolName}`, isError: true };
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { result: `Tool error: ${msg}`, isError: true };
+  }
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+/** Resolve a file from path or active file */
+function resolveFile(app: App, path?: string): TFile | null {
+  if (path) {
+    return app.vault.getFileByPath(normalizePath(path));
+  }
+  return app.workspace.getActiveFile();
+}
+
+/** Ensure parent folders exist for a path */
+async function ensureParentFolder(app: App, filePath: string): Promise<void> {
+  const parentPath = filePath.substring(0, filePath.lastIndexOf("/"));
+  if (parentPath && !app.vault.getFolderByPath(parentPath)) {
+    await app.vault.createFolder(parentPath);
+  }
+}
+
+function findFrontmatterEnd(content: string): number {
+  if (!content.startsWith("---")) return -1;
+  const secondDash = content.indexOf("---", 3);
+  if (secondDash === -1) return -1;
+  return secondDash + 3;
+}
+
+// ─── Tool Implementations ───────────────────────────────────────────────────
+
+async function readDocument(
+  app: App,
+  input: Record<string, unknown>
+): Promise<ToolResult> {
+  const file = resolveFile(app, input.path as string | undefined);
+  if (!file) {
+    return { result: input.path ? `File not found: ${input.path}` : "No active document open.", isError: true };
+  }
+
+  // cachedRead() is faster for display-only reads
+  const content = await app.vault.cachedRead(file);
+  return { result: `# ${file.path}\n\n${content}`, isError: false };
+}
+
+async function editDocument(
+  app: App,
+  input: Record<string, unknown>
+): Promise<ToolResult> {
+  const operation = input.operation as string;
+  const content = input.content as string;
+  const find = input.find as string | undefined;
+  const position = input.position as string | undefined;
+
+  const file = resolveFile(app, input.path as string | undefined);
+  if (!file) {
+    return { result: input.path ? `File not found: ${input.path}` : "No active document open.", isError: true };
+  }
+
+  switch (operation) {
+    case "replace_all":
+      await app.vault.modify(file, content);
+      return { result: `Replaced all content in ${file.path}.`, isError: false };
+
+    case "find_replace": {
+      if (!find) {
+        return { result: "'find' parameter is required for find_replace.", isError: true };
+      }
+
+      // Use vault.process() for atomic read-modify-write
+      let resultMsg = "";
+      let found = false;
+
+      await app.vault.process(file, (data) => {
+        const idx = data.indexOf(find);
+        if (idx === -1) {
+          found = false;
+          return data; // Return unchanged
+        }
+        found = true;
+        const secondIdx = data.indexOf(find, idx + 1);
+        if (secondIdx !== -1) {
+          resultMsg = "[Note: Multiple matches found, replacing first occurrence.]\n";
+        }
+        return data.substring(0, idx) + content + data.substring(idx + find.length);
+      });
+
+      if (!found) {
+        return {
+          result: "Could not find the specified text. Make sure it matches exactly (including whitespace and line breaks).",
+          isError: true,
+        };
+      }
+
+      return { result: `${resultMsg}Successfully replaced text in ${file.path}.`, isError: false };
+    }
+
+    case "insert": {
+      if (!position) {
+        return { result: "'position' parameter is required for insert.", isError: true };
+      }
+
+      await app.vault.process(file, (data) => {
+        switch (position) {
+          case "beginning":
+            return content + "\n" + data;
+          case "end":
+            return data + "\n" + content;
+          case "after_frontmatter": {
+            const fmEnd = findFrontmatterEnd(data);
+            if (fmEnd === -1) return content + "\n" + data;
+            return data.substring(0, fmEnd) + "\n" + content + data.substring(fmEnd);
+          }
+          default:
+            return data; // Unknown position, return unchanged
+        }
+      });
+
+      if (position !== "beginning" && position !== "end" && position !== "after_frontmatter") {
+        return { result: `Unknown position: ${position}`, isError: true };
+      }
+
+      return { result: `Inserted content at ${position} of ${file.path}.`, isError: false };
+    }
+
+    default:
+      return { result: `Unknown operation: ${operation}`, isError: true };
+  }
+}
+
+async function searchVault(
+  app: App,
+  input: Record<string, unknown>
+): Promise<ToolResult> {
+  const query = (input.query as string).toLowerCase();
+  const searchContent = input.searchContent as boolean | undefined;
+  const limit = Math.min((input.limit as number) || 10, 50);
+
+  const files = app.vault.getMarkdownFiles();
+  const results: string[] = [];
+
+  for (const file of files) {
+    if (results.length >= limit) break;
+
+    if (file.path.toLowerCase().includes(query)) {
+      results.push(`- ${file.path}`);
+      continue;
+    }
+
+    if (searchContent) {
+      // cachedRead() avoids redundant disk reads
+      const content = await app.vault.cachedRead(file);
+      const lowerContent = content.toLowerCase();
+      const idx = lowerContent.indexOf(query);
+      if (idx !== -1) {
+        const start = Math.max(0, idx - 50);
+        const end = Math.min(content.length, idx + query.length + 50);
+        const snippet = content.substring(start, end).replace(/\n/g, " ");
+        results.push(`- ${file.path}: ...${snippet}...`);
+      }
+    }
+  }
+
+  if (results.length === 0) {
+    return { result: `No results found for "${input.query}".`, isError: false };
+  }
+
+  return {
+    result: `Found ${results.length} result(s):\n${results.join("\n")}`,
+    isError: false,
+  };
+}
+
+async function readFile(
+  app: App,
+  input: Record<string, unknown>
+): Promise<ToolResult> {
+  const path = input.path as string;
+  if (!path) {
+    return { result: "'path' parameter is required.", isError: true };
+  }
+
+  const file = app.vault.getFileByPath(normalizePath(path));
+  if (!file) {
+    return { result: `File not found: ${path}`, isError: true };
+  }
+
+  const content = await app.vault.cachedRead(file);
+  return { result: content, isError: false };
+}
+
+async function createFile(
+  app: App,
+  input: Record<string, unknown>
+): Promise<ToolResult> {
+  const path = normalizePath(input.path as string);
+  const content = input.content as string;
+
+  if (!path) {
+    return { result: "'path' parameter is required.", isError: true };
+  }
+
+  if (app.vault.getFileByPath(path)) {
+    return { result: `File already exists: ${path}. Use edit_document to modify it.`, isError: true };
+  }
+
+  await ensureParentFolder(app, path);
+  await app.vault.create(path, content || "");
+  return { result: `Created ${path}.`, isError: false };
+}
+
+async function listFiles(
+  app: App,
+  input: Record<string, unknown>
+): Promise<ToolResult> {
+  const folder = input.folder as string | undefined;
+  const extension = input.extension as string | undefined;
+
+  let files = app.vault.getFiles();
+
+  if (folder) {
+    const normalizedFolder = normalizePath(folder);
+    files = files.filter((f) =>
+      f.path.startsWith(normalizedFolder + "/") || f.path === normalizedFolder
+    );
+  }
+
+  if (extension) {
+    const ext = extension.startsWith(".") ? extension : `.${extension}`;
+    files = files.filter((f) => f.path.endsWith(ext));
+  }
+
+  const paths = files.map((f) => f.path).sort();
+  const capped = paths.slice(0, 100);
+  const suffix = paths.length > 100 ? `\n\n(Showing 100 of ${paths.length} files)` : "";
+
+  if (capped.length === 0) {
+    return { result: "No files found matching the criteria.", isError: false };
+  }
+
+  return {
+    result: capped.map((p) => `- ${p}`).join("\n") + suffix,
+    isError: false,
+  };
+}
+
+async function renameFile(
+  app: App,
+  input: Record<string, unknown>
+): Promise<ToolResult> {
+  const path = input.path as string;
+  const newPath = input.new_path as string;
+
+  if (!path || !newPath) {
+    return { result: "Both 'path' and 'new_path' parameters are required.", isError: true };
+  }
+
+  const file = app.vault.getAbstractFileByPath(normalizePath(path));
+  if (!file) {
+    return { result: `File not found: ${path}`, isError: true };
+  }
+
+  const normalizedNew = normalizePath(newPath);
+
+  if (app.vault.getAbstractFileByPath(normalizedNew)) {
+    return { result: `A file already exists at: ${normalizedNew}`, isError: true };
+  }
+
+  await ensureParentFolder(app, normalizedNew);
+
+  // fileManager.renameFile() updates all internal links automatically
+  await app.fileManager.renameFile(file, normalizedNew);
+  return { result: `Renamed ${path} to ${normalizedNew}.`, isError: false };
+}
+
+async function deleteFile(
+  app: App,
+  input: Record<string, unknown>
+): Promise<ToolResult> {
+  const path = input.path as string;
+  if (!path) {
+    return { result: "'path' parameter is required.", isError: true };
+  }
+
+  const file = app.vault.getAbstractFileByPath(normalizePath(path));
+  if (!file) {
+    return { result: `File not found: ${path}`, isError: true };
+  }
+
+  // vault.trash() respects user's trash setting (.trash or system trash)
+  await app.vault.trash(file, true);
+  return { result: `Moved ${path} to trash.`, isError: false };
+}
+
+async function askUser(
+  input: Record<string, unknown>,
+  onAskUser: AskUserCallback
+): Promise<ToolResult> {
+  const question = input.question as string;
+  if (!question) {
+    return { result: "'question' parameter is required.", isError: true };
+  }
+
+  const answer = await onAskUser(question);
+  return { result: answer, isError: false };
+}
