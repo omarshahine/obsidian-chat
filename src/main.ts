@@ -246,6 +246,11 @@ export default class ChatPlugin extends Plugin {
     const saved = (await this.loadData()) || {};
     this.settings = Object.assign({}, DEFAULT_SETTINGS, saved);
 
+    // Fall back to default model if saved model is empty
+    if (!this.settings.model) {
+      this.settings.model = DEFAULT_SETTINGS.model;
+    }
+
     // Load API key for the current provider from SecretStorage
     this.settings.apiKey = this.loadApiKey(this.settings.provider);
   }

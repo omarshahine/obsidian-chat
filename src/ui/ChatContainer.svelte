@@ -15,11 +15,13 @@
   interface Props {
     app: App;
     component: ObsidianComponent;
+    provider: string;
+    model: string;
     onSend: (text: string, selection: SelectionScope | null) => void;
     onClear: () => void;
   }
 
-  let { app, component, onSend, onClear }: Props = $props();
+  let { app, component, provider, model, onSend, onClear }: Props = $props();
 
   let messages = $state<ChatMessage[]>([]);
   let inputText = $state("");
@@ -198,7 +200,10 @@
 <div class="ochat-container">
   <!-- Header -->
   <div class="ochat-header">
-    <span class="ochat-header-title">Chat</span>
+    <div class="ochat-header-left">
+      <span class="ochat-header-title">Chat</span>
+      <span class="ochat-header-model">{model || "No model"}</span>
+    </div>
     <button class="ochat-clear-btn" onclick={onClear}>Clear</button>
   </div>
 
@@ -315,10 +320,21 @@
     flex-shrink: 0;
   }
 
+  .ochat-header-left {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+
   .ochat-header-title {
     font-weight: var(--font-weight-bold, 600);
     font-size: var(--font-ui-medium);
     color: var(--text-normal);
+  }
+
+  .ochat-header-model {
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
   }
 
   .ochat-clear-btn {

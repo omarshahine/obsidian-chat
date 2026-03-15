@@ -44,6 +44,8 @@ export class ObsidianChatView extends ItemView {
       props: {
         app: this.app,
         component: this,
+        provider: this.plugin.settings.provider,
+        model: this.plugin.settings.model,
         onSend: (text: string, selection: SelectionScope | null) =>
           this.handleUserMessage(text, selection),
         onClear: () => this.handleClear(),

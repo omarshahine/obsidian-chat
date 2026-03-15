@@ -6,7 +6,6 @@ export interface ChatSettings {
   provider: Provider;
   apiKey: string;
   model: string;
-  systemPromptOverride: string;
   maxIterations: number;
   enableWebSearch: boolean;
 }
@@ -15,7 +14,6 @@ export const DEFAULT_SETTINGS: ChatSettings = {
   provider: "anthropic",
   apiKey: "",
   model: "claude-sonnet-4-6",
-  systemPromptOverride: "",
   maxIterations: 20,
   enableWebSearch: true,
 };

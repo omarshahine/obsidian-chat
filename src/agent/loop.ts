@@ -66,7 +66,7 @@ export class AgentLoop {
 
   /** Export the full conversation as a readable markdown transcript */
   exportTranscript(): string {
-    const systemPrompt = buildSystemPrompt(this.settings.systemPromptOverride);
+    const systemPrompt = buildSystemPrompt();
 
     const parts: string[] = [
       `# Obsidian Chat Transcript`,
@@ -156,7 +156,7 @@ export class AgentLoop {
     this.pruneHistory();
 
     // System prompt is static (cache-friendly). Built once, identical every call.
-    const systemPrompt = buildSystemPrompt(this.settings.systemPromptOverride);
+    const systemPrompt = buildSystemPrompt();
 
     debugLog(this.app, "USER_MESSAGE", { userMessage, hasSelection: !!selection });
 

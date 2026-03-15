@@ -60,8 +60,8 @@ export class ChatSettingTab extends PluginSettingTab {
           })
       );
 
-    // ─── API Key ──────────────────────────────────────────────────────
-    new Setting(containerEl)
+    // ─── API Key + Test ─────────────────────────────────────────────
+    const apiKeySetting = new Setting(containerEl)
       .setName("API key")
       .setDesc(s.apiKey ? "Key saved" : "Enter your API key to get started")
       .addText((text) => {
@@ -73,12 +73,42 @@ export class ChatSettingTab extends PluginSettingTab {
             const hadKey = !!s.apiKey;
             s.apiKey = value.trim();
             await this.plugin.saveSettings();
-            // Re-render when key goes from empty to set (shows refresh button)
             if (!hadKey && s.apiKey) {
               setTimeout(() => this.display(), 10);
             }
           });
       });
+
+    if (s.apiKey) {
+      apiKeySetting.addButton((button) =>
+        button.setButtonText("Test").onClick(async () => {
+          button.setButtonText("Testing...");
+          button.setDisabled(true);
+          try {
+            const { sendMessage } = await import("./api/client");
+            const response = await sendMessage(
+              s,
+              [{ role: "user", content: "Say hello in one word." }],
+              [],
+              "You are a test. Respond with one word."
+            );
+            const text = response.content
+              .filter((b) => b.type === "text")
+              .map((b) => b.text)
+              .join("");
+            new Notice(`Connected! Response: "${text}"`);
+            apiKeySetting.setDesc("Connection successful");
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            new Notice(`Connection failed: ${msg}`);
+            apiKeySetting.setDesc(`Failed: ${msg}`);
+          } finally {
+            button.setButtonText("Test");
+            button.setDisabled(false);
+          }
+        })
+      );
+    }
 
     // ─── Model ────────────────────────────────────────────────────────
     const cached = modelCache.get(s.provider);
@@ -182,63 +212,7 @@ export class ChatSettingTab extends PluginSettingTab {
           })
       );
 
-    // ─── System prompt override ───────────────────────────────────────
-    new Setting(containerEl)
-      .setName("System prompt override")
-      .setDesc("Custom system prompt (leave empty to use default)")
-      .addTextArea((text) => {
-        text.inputEl.rows = 6;
-        text.inputEl.style.width = "100%";
-        text
-          .setPlaceholder("Leave empty for default system prompt")
-          .setValue(s.systemPromptOverride)
-          .onChange(async (value) => {
-            s.systemPromptOverride = value;
-            await this.plugin.saveSettings();
-          });
-      });
-
-    // ─── Test connection ──────────────────────────────────────────────
-    const testSetting = new Setting(containerEl)
-      .setName("Test connection")
-      .setDesc("Verify that the API key and model work");
-
-    testSetting.addButton((button) =>
-      button.setButtonText("Test").onClick(async () => {
-        if (!s.apiKey) {
-          new Notice("API key is required");
-          return;
-        }
-
-        button.setButtonText("Testing...");
-        button.setDisabled(true);
-
-        try {
-          const { sendMessage } = await import("./api/client");
-          const response = await sendMessage(
-            s,
-            [{ role: "user", content: "Say hello in one word." }],
-            [],
-            "You are a test. Respond with one word."
-          );
-
-          const text = response.content
-            .filter((b) => b.type === "text")
-            .map((b) => b.text)
-            .join("");
-
-          new Notice(`Connected! Response: "${text}"`);
-          testSetting.setDesc("Connection successful");
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          new Notice(`Connection failed: ${msg}`);
-          testSetting.setDesc(`Failed: ${msg}`);
-        } finally {
-          button.setButtonText("Test");
-          button.setDisabled(false);
-        }
-      })
-    );
+    // System prompt override removed for simplicity
   }
 }
 
