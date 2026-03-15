@@ -50,11 +50,12 @@ export class ChatSettingTab extends PluginSettingTab {
           .addOption("openai", "OpenAI")
           .setValue(s.provider)
           .onChange(async (value) => {
+            // Load the new provider's key BEFORE saving,
+            // otherwise the old provider's key gets saved under the new provider name
             s.provider = value as Provider;
             s.model = "";
-            await this.plugin.saveSettings();
-            // Load the API key for the new provider
             this.plugin.reloadApiKeyForProvider();
+            await this.plugin.saveSettings();
             setTimeout(() => this.display(), 10);
           })
       );
