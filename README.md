@@ -56,7 +56,7 @@ Select text in a note, right-click, and choose "Send selection to Chat". The sel
 
 1. Open Settings > Obsidian Chat
 2. Pick Anthropic or OpenAI
-3. Enter your API key (stored in your OS keychain, never synced)
+3. Enter your API key (stored per-provider in your OS keychain via [SecretStorage](https://docs.obsidian.md/plugins/guides/secret-storage), never synced)
 4. Click the refresh icon next to Model to load available models
 5. Open the chat from the ribbon icon, command palette, or context menu
 
@@ -86,7 +86,7 @@ Select text in a note, right-click, and choose "Send selection to Chat". The sel
 | No vault indexing | Linear search capped at results limit. Avoids mobile memory issues. |
 | Svelte 5 UI | Compiles away to vanilla JS. Reactive state without React's runtime overhead. |
 | Right sidebar on mobile | Slides in from the edge, keeping your document underneath. |
-| Per-device API keys | Stored in OS keychain via SecretStorage. Never synced, never in data.json. |
+| Per-device API keys | Stored in OS keychain via [SecretStorage](https://docs.obsidian.md/plugins/guides/secret-storage). Never synced, never in data.json. |
 
 ## Development
 
