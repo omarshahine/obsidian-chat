@@ -135,6 +135,7 @@
     if (!text) return;
 
     inputText = "";
+    resetHeight();
 
     if (askUserResolve) {
       addUserMessage(text);
@@ -155,6 +156,17 @@
       e.preventDefault();
       handleSend();
     }
+  }
+
+  function autoGrow(): void {
+    if (!textareaEl) return;
+    textareaEl.style.height = "auto";
+    textareaEl.style.height = Math.min(textareaEl.scrollHeight, 150) + "px";
+  }
+
+  function resetHeight(): void {
+    if (!textareaEl) return;
+    textareaEl.style.height = "auto";
   }
 
   // Render markdown into a DOM node using Obsidian's renderer
@@ -271,6 +283,7 @@
       disabled={!inputEnabled}
       rows="1"
       onkeydown={handleKeydown}
+      oninput={autoGrow}
     ></textarea>
     <button
       class="ochat-send-btn"
@@ -472,11 +485,11 @@
   .ochat-input-bar {
     display: flex;
     align-items: flex-end;
-    gap: 6px;
-    padding: 6px 8px;
-    padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+    gap: 8px;
+    padding: 8px 12px;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
     border-top: 1px solid var(--background-modifier-border);
-    background: transparent;
+    background: var(--background-primary);
     flex-shrink: 0;
   }
 
@@ -484,8 +497,8 @@
     flex: 1;
     resize: none;
     border: 1.5px solid var(--background-modifier-border-hover, var(--background-modifier-border));
-    border-radius: 18px;
-    padding: 6px 14px;
+    border-radius: 20px;
+    padding: 8px 16px;
     font-size: var(--font-ui-medium);
     font-family: var(--font-interface);
     background-color: var(--background-secondary);
@@ -507,10 +520,10 @@
   }
 
   .ochat-send-btn {
-    width: 32px;
-    height: 32px;
-    min-width: 32px;
-    min-height: 32px;
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    min-height: 34px;
     padding: 0;
     border: none;
     border-radius: 50%;
@@ -522,7 +535,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: 2px;
+    margin-bottom: 1px;
   }
 
   .ochat-send-btn:hover {
@@ -595,8 +608,23 @@
       max-width: 95%;
     }
 
+    .ochat-input-bar {
+      gap: 10px;
+      padding: 10px 12px;
+      padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    }
+
     .ochat-input {
-      font-size: 16px;
+      font-size: 16px; /* Prevents iOS zoom on focus */
+      padding: 10px 16px;
+      border-radius: 22px;
+    }
+
+    .ochat-send-btn {
+      width: 36px;
+      height: 36px;
+      min-width: 36px;
+      min-height: 36px;
     }
   }
 </style>
