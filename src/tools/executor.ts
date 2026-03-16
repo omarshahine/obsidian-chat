@@ -384,61 +384,15 @@ async function setProperties(
     return { result: input.path ? `File not found: ${input.path}` : "No active document open.", isError: true };
   }
 
-  await app.vault.process(file, (data) => {
-    const fmEnd = findFrontmatterEnd(data);
-
-    // Parse existing frontmatter
-    let existing: Record<string, unknown> = {};
-    let body: string;
-
-    if (fmEnd !== -1) {
-      const fmBlock = data.substring(3, fmEnd - 3).trim();
-      // Simple YAML key-value parser for frontmatter
-      for (const line of fmBlock.split("\n")) {
-        const colonIdx = line.indexOf(":");
-        if (colonIdx === -1) continue;
-        const key = line.substring(0, colonIdx).trim();
-        let value: unknown = line.substring(colonIdx + 1).trim();
-        // Handle arrays on the same line: tags: [a, b]
-        if (typeof value === "string" && value.startsWith("[") && value.endsWith("]")) {
-          value = value.slice(1, -1).split(",").map((s: string) => s.trim()).filter(Boolean);
-        } else if (value === "true") value = true;
-        else if (value === "false") value = false;
-        else if (value === "" || value === "null") value = null;
-        else if (!isNaN(Number(value))) value = Number(value);
-        existing[key] = value;
-      }
-      body = data.substring(fmEnd);
-    } else {
-      body = data;
-    }
-
-    // Merge: null values remove keys
+  // Use Obsidian's built-in processFrontMatter for safe YAML handling
+  await app.fileManager.processFrontMatter(file, (frontmatter) => {
     for (const [key, value] of Object.entries(props)) {
       if (value === null) {
-        delete existing[key];
+        delete frontmatter[key];
       } else {
-        existing[key] = value;
+        frontmatter[key] = value;
       }
     }
-
-    // Serialize back to YAML
-    const yamlLines: string[] = [];
-    for (const [key, value] of Object.entries(existing)) {
-      if (Array.isArray(value)) {
-        yamlLines.push(`${key}: [${value.join(", ")}]`);
-      } else if (typeof value === "string" && (value.includes(":") || value.includes("#") || value.includes("'"))) {
-        yamlLines.push(`${key}: "${value}"`);
-      } else {
-        yamlLines.push(`${key}: ${value}`);
-      }
-    }
-
-    if (yamlLines.length === 0) {
-      return body.startsWith("\n") ? body.substring(1) : body;
-    }
-
-    return `---\n${yamlLines.join("\n")}\n---${body.startsWith("\n") ? "" : "\n"}${body}`;
   });
 
   const setKeys = Object.entries(props).filter(([, v]) => v !== null).map(([k]) => k);
@@ -483,7 +437,7 @@ async function getBacklinks(
 function getCurrentDatetime(): ToolResult {
   const now = new Date();
   const iso = now.toISOString();
-  const local = now.toLocaleString("en-US", {
+  const local = now.toLocaleString(undefined, {
     weekday: "long",
     year: "numeric",
     month: "long",

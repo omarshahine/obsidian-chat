@@ -71,6 +71,11 @@ npm run svelte-check   # Svelte check
 | list_files | `vault.getFiles()` | Capped at 100 results |
 | rename_file | `fileManager.renameFile()` | Updates all links |
 | delete_file | `vault.trash()` | Respects user trash setting |
+| open_document | `workspace.getLeaf().openFile()` | Opens file in editor |
+| get_properties | `metadataCache.getFileCache()` | Reads YAML frontmatter |
+| set_properties | `fileManager.processFrontMatter()` | Safe YAML merge/remove |
+| get_backlinks | `metadataCache.resolvedLinks` | Finds linking notes |
+| get_current_datetime | `Date` | User's locale and timezone |
 | ask_user | UI callback | Pauses agent loop |
 
 ## Debug

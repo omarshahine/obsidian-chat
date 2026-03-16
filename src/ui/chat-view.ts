@@ -194,6 +194,7 @@ export class ObsidianChatView extends ItemView {
       chat.setInputEnabled(true);
       chat.focus();
     }
+    this.plugin.saveChatHistory();
   }
 
   private handleClear(): void {
