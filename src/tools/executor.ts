@@ -36,6 +36,16 @@ export async function executeTool(
         return await renameFile(app, input);
       case "delete_file":
         return await deleteFile(app, input);
+      case "get_properties":
+        return await getProperties(app, input);
+      case "set_properties":
+        return await setProperties(app, input);
+      case "get_backlinks":
+        return await getBacklinks(app, input);
+      case "get_current_datetime":
+        return getCurrentDatetime();
+      case "open_document":
+        return await openDocument(app, input);
       case "ask_user":
         return await askUser(input, onAskUser);
       default:
@@ -335,6 +345,180 @@ async function deleteFile(
   // vault.trash() respects user's trash setting (.trash or system trash)
   await app.vault.trash(file, true);
   return { result: `Moved ${path} to trash.`, isError: false };
+}
+
+async function getProperties(
+  app: App,
+  input: Record<string, unknown>
+): Promise<ToolResult> {
+  const file = resolveFile(app, input.path as string | undefined);
+  if (!file) {
+    return { result: input.path ? `File not found: ${input.path}` : "No active document open.", isError: true };
+  }
+
+  const cache = app.metadataCache.getFileCache(file);
+  const frontmatter = cache?.frontmatter;
+
+  if (!frontmatter) {
+    return { result: `No frontmatter properties found in ${file.path}.`, isError: false };
+  }
+
+  // Remove the position metadata that Obsidian adds internally
+  const clean = { ...frontmatter };
+  delete clean.position;
+
+  return { result: JSON.stringify(clean, null, 2), isError: false };
+}
+
+async function setProperties(
+  app: App,
+  input: Record<string, unknown>
+): Promise<ToolResult> {
+  const props = input.properties as Record<string, unknown>;
+  if (!props || typeof props !== "object") {
+    return { result: "'properties' parameter must be an object.", isError: true };
+  }
+
+  const file = resolveFile(app, input.path as string | undefined);
+  if (!file) {
+    return { result: input.path ? `File not found: ${input.path}` : "No active document open.", isError: true };
+  }
+
+  await app.vault.process(file, (data) => {
+    const fmEnd = findFrontmatterEnd(data);
+
+    // Parse existing frontmatter
+    let existing: Record<string, unknown> = {};
+    let body: string;
+
+    if (fmEnd !== -1) {
+      const fmBlock = data.substring(3, fmEnd - 3).trim();
+      // Simple YAML key-value parser for frontmatter
+      for (const line of fmBlock.split("\n")) {
+        const colonIdx = line.indexOf(":");
+        if (colonIdx === -1) continue;
+        const key = line.substring(0, colonIdx).trim();
+        let value: unknown = line.substring(colonIdx + 1).trim();
+        // Handle arrays on the same line: tags: [a, b]
+        if (typeof value === "string" && value.startsWith("[") && value.endsWith("]")) {
+          value = value.slice(1, -1).split(",").map((s: string) => s.trim()).filter(Boolean);
+        } else if (value === "true") value = true;
+        else if (value === "false") value = false;
+        else if (value === "" || value === "null") value = null;
+        else if (!isNaN(Number(value))) value = Number(value);
+        existing[key] = value;
+      }
+      body = data.substring(fmEnd);
+    } else {
+      body = data;
+    }
+
+    // Merge: null values remove keys
+    for (const [key, value] of Object.entries(props)) {
+      if (value === null) {
+        delete existing[key];
+      } else {
+        existing[key] = value;
+      }
+    }
+
+    // Serialize back to YAML
+    const yamlLines: string[] = [];
+    for (const [key, value] of Object.entries(existing)) {
+      if (Array.isArray(value)) {
+        yamlLines.push(`${key}: [${value.join(", ")}]`);
+      } else if (typeof value === "string" && (value.includes(":") || value.includes("#") || value.includes("'"))) {
+        yamlLines.push(`${key}: "${value}"`);
+      } else {
+        yamlLines.push(`${key}: ${value}`);
+      }
+    }
+
+    if (yamlLines.length === 0) {
+      return body.startsWith("\n") ? body.substring(1) : body;
+    }
+
+    return `---\n${yamlLines.join("\n")}\n---${body.startsWith("\n") ? "" : "\n"}${body}`;
+  });
+
+  const setKeys = Object.entries(props).filter(([, v]) => v !== null).map(([k]) => k);
+  const removedKeys = Object.entries(props).filter(([, v]) => v === null).map(([k]) => k);
+  const parts: string[] = [];
+  if (setKeys.length > 0) parts.push(`Set: ${setKeys.join(", ")}`);
+  if (removedKeys.length > 0) parts.push(`Removed: ${removedKeys.join(", ")}`);
+
+  return { result: `Updated properties in ${file.path}. ${parts.join(". ")}.`, isError: false };
+}
+
+async function getBacklinks(
+  app: App,
+  input: Record<string, unknown>
+): Promise<ToolResult> {
+  const file = resolveFile(app, input.path as string | undefined);
+  if (!file) {
+    return { result: input.path ? `File not found: ${input.path}` : "No active document open.", isError: true };
+  }
+
+  // resolvedLinks maps: source path -> { target path -> link count }
+  const allLinks = app.metadataCache.resolvedLinks;
+  const backlinks: string[] = [];
+
+  for (const [sourcePath, targets] of Object.entries(allLinks)) {
+    if (targets[file.path]) {
+      backlinks.push(sourcePath);
+    }
+  }
+
+  if (backlinks.length === 0) {
+    return { result: `No backlinks found for ${file.path}.`, isError: false };
+  }
+
+  backlinks.sort();
+  return {
+    result: `${backlinks.length} note(s) link to ${file.path}:\n${backlinks.map((p) => `- ${p}`).join("\n")}`,
+    isError: false,
+  };
+}
+
+function getCurrentDatetime(): ToolResult {
+  const now = new Date();
+  const iso = now.toISOString();
+  const local = now.toLocaleString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZoneName: "short",
+  });
+  const dateOnly = now.toISOString().split("T")[0]; // YYYY-MM-DD for daily notes
+
+  return {
+    result: `Local: ${local}\nISO: ${iso}\nDate: ${dateOnly}`,
+    isError: false,
+  };
+}
+
+async function openDocument(
+  app: App,
+  input: Record<string, unknown>
+): Promise<ToolResult> {
+  const path = input.path as string;
+  if (!path) {
+    return { result: "'path' parameter is required.", isError: true };
+  }
+
+  const file = app.vault.getFileByPath(normalizePath(path));
+  if (!file) {
+    return { result: `File not found: ${path}`, isError: true };
+  }
+
+  // Open in the most recent non-chat leaf so it doesn't replace the sidebar
+  const leaf = app.workspace.getLeaf(false);
+  await leaf.openFile(file);
+  return { result: `Opened ${file.path}.`, isError: false };
 }
 
 async function askUser(

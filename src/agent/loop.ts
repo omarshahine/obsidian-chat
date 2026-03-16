@@ -64,6 +64,16 @@ export class AgentLoop {
     clearOpenAIState();
   }
 
+  /** Export API messages for persistence */
+  exportMessages(): UnifiedMessage[] {
+    return this.messages;
+  }
+
+  /** Restore API messages from persistence */
+  importMessages(messages: UnifiedMessage[]): void {
+    this.messages = messages;
+  }
+
   /** Export the full conversation as a readable markdown transcript */
   exportTranscript(): string {
     const systemPrompt = buildSystemPrompt();

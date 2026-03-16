@@ -92,7 +92,7 @@ export const TOOL_DEFINITIONS: UnifiedToolDef[] = [
   },
   {
     name: "create_file",
-    description: "Create a new file in the vault. Fails if the file already exists.",
+    description: "Create a new file in the vault. Fails if the file already exists. IMPORTANT: The filename is the title in Obsidian, so never start content with an H1 heading that repeats the filename.",
     inputSchema: {
       type: "object",
       properties: {
@@ -153,6 +153,80 @@ export const TOOL_DEFINITIONS: UnifiedToolDef[] = [
         path: {
           type: "string",
           description: "Path of the file to delete relative to vault root.",
+        },
+      },
+      required: ["path"],
+    },
+  },
+  {
+    name: "get_properties",
+    description:
+      "Read the YAML frontmatter properties of a markdown document as structured data. Returns tags, aliases, and all custom properties.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Path to the document. Omit to use the active document.",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "set_properties",
+    description:
+      "Set or update YAML frontmatter properties on a markdown document. Merges with existing properties. Set a value to null to remove a property.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Path to the document. Omit to use the active document.",
+        },
+        properties: {
+          type: "object",
+          description: "Key-value pairs to set in the frontmatter. Arrays (like tags) are supported. Set a value to null to remove that property.",
+        },
+      },
+      required: ["properties"],
+    },
+  },
+  {
+    name: "get_backlinks",
+    description:
+      "Find all notes in the vault that link to a given document. Uses Obsidian's metadata cache for fast lookups.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Path to the document. Omit to use the active document.",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_current_datetime",
+    description:
+      "Get the current date and time in the user's local timezone. Useful for daily notes, journaling, scheduling, or any time-aware task.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "open_document",
+    description:
+      "Open a document in the Obsidian editor. Use this when the user wants to navigate to, view, or open a specific file.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Path to the file relative to vault root.",
         },
       },
       required: ["path"],

@@ -10,7 +10,7 @@ import {
 } from "obsidian";
 import type { ChatSettings, SelectionScope } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
-import { ChatSettingTab } from "./settings";
+import { ChatSettingTab, getModelDisplayName } from "./settings";
 import { ObsidianChatView, VIEW_TYPE_CHAT } from "./ui/chat-view";
 import { AgentLoop } from "./agent/loop";
 
@@ -25,6 +25,9 @@ export default class ChatPlugin extends Plugin {
     await this.loadSettings();
 
     this.agent = new AgentLoop(this.app, this.settings);
+
+    // Restore persisted chat history
+    await this.loadChatHistory();
 
     this.addSettingTab(new ChatSettingTab(this.app, this));
 
@@ -128,7 +131,8 @@ export default class ChatPlugin extends Plugin {
     );
   }
 
-  onunload(): void {
+  async onunload(): Promise<void> {
+    await this.saveChatHistory();
     this.app.workspace.detachLeavesOfType(VIEW_TYPE_CHAT);
   }
 
@@ -240,6 +244,40 @@ export default class ChatPlugin extends Plugin {
     }
   }
 
+  // ─── Chat history persistence ─────────────────────────────────────────
+
+  async saveChatHistory(): Promise<void> {
+    try {
+      const state = {
+        chatHistory: this.chatHistory.slice(-100), // Cap at 100 UI messages
+        agentMessages: this.agent.exportMessages().slice(-80), // Cap at 80 API messages
+      };
+      await this.app.vault.adapter.write(
+        ".obsidian/plugins/obsidian-chat/chat-state.json",
+        JSON.stringify(state)
+      );
+    } catch {
+      // Persistence is best-effort
+    }
+  }
+
+  private async loadChatHistory(): Promise<void> {
+    try {
+      const raw = await this.app.vault.adapter.read(
+        ".obsidian/plugins/obsidian-chat/chat-state.json"
+      );
+      const state = JSON.parse(raw);
+      if (Array.isArray(state.chatHistory)) {
+        this.chatHistory = state.chatHistory;
+      }
+      if (Array.isArray(state.agentMessages)) {
+        this.agent.importMessages(state.agentMessages);
+      }
+    } catch {
+      // No saved state or parse error — start fresh
+    }
+  }
+
   // ─── Settings persistence ────────────────────────────────────────────
 
   async loadSettings(): Promise<void> {
@@ -262,6 +300,11 @@ export default class ChatPlugin extends Plugin {
     // Save all other settings to data.json (syncs), but strip the API key
     const toSave = { ...this.settings, apiKey: "" };
     await this.saveData(toSave);
+
+    // Update the chat view header with the new model name
+    this.getChatView()?.updateModel(
+      getModelDisplayName(this.settings.provider, this.settings.model)
+    );
   }
 
   /** Load the correct API key when provider changes */
