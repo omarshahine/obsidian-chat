@@ -19,7 +19,7 @@ That's it. Two providers. The best models. Fetch the full model list from the AP
 
 ## What the AI can do
 
-The chat assistant has 9 tools that map directly to Obsidian's Vault API:
+The chat assistant has 14 tools that map directly to Obsidian's Vault API:
 
 - **read_document** / **read_file**: Read any note in your vault
 - **edit_document**: Find-and-replace, insert, or replace content
@@ -28,6 +28,11 @@ The chat assistant has 9 tools that map directly to Obsidian's Vault API:
 - **rename_file**: Rename or move files (updates all links)
 - **delete_file**: Move files to trash
 - **list_files**: Browse vault structure
+- **open_document**: Navigate to a file in the editor
+- **get_properties**: Read YAML frontmatter as structured data
+- **set_properties**: Update frontmatter properties (uses Obsidian's native API)
+- **get_backlinks**: Find all notes that link to a given document
+- **get_current_datetime**: Get the current date and time in the user's locale
 - **ask_user**: Ask you a question when something is ambiguous
 
 The AI reads before it edits, prefers surgical find-and-replace over full rewrites, and acts on your confirmations without re-asking.
@@ -82,7 +87,7 @@ Select text in a note, right-click, and choose "Send selection to Chat". The sel
 |----------|-----|
 | Two providers only | Simplicity. Anthropic and OpenAI cover the best models. |
 | No streaming | Obsidian's `requestUrl()` doesn't support it. Required for mobile. |
-| No conversation persistence | Notes are the artifact, not chat logs. Chat persists in memory during the session. |
+| Conversation persistence | Chat history survives Obsidian restarts. Stored locally in `chat-state.json`, never synced. |
 | No vault indexing | Linear search capped at results limit. Avoids mobile memory issues. |
 | Svelte 5 UI | Compiles away to vanilla JS. Reactive state without React's runtime overhead. |
 | Right sidebar on mobile | Slides in from the edge, keeping your document underneath. |

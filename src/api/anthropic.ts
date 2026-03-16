@@ -81,22 +81,34 @@ export async function sendAnthropicMessage(
     body.tools = apiTools;
   }
 
-  const response = await requestUrl({
-    url: ANTHROPIC_API_URL,
-    method: "POST",
-    headers: {
-      "x-api-key": settings.apiKey,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
+  let response;
+  try {
+    response = await requestUrl({
+      url: ANTHROPIC_API_URL,
+      method: "POST",
+      headers: {
+        "x-api-key": settings.apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
+      throw: false,
+    });
+  } catch (e: unknown) {
+    // requestUrl throws on network errors; extract API details if available
+    const err = e as { status?: number; json?: { error?: { message?: string } } };
+    const apiMsg = err.json?.error?.message;
+    if (apiMsg) {
+      throw new Error(`Anthropic API error (${err.status}): ${apiMsg}`);
+    }
+    throw e;
+  }
 
   if (response.status !== 200) {
     const errorText = typeof response.json?.error?.message === "string"
       ? response.json.error.message
       : `HTTP ${response.status}`;
-    throw new Error(`Anthropic API error: ${errorText}`);
+    throw new Error(`Anthropic API error (${response.status}): ${errorText}`);
   }
 
   const data = response.json;
@@ -115,7 +127,7 @@ export async function sendAnthropicMessage(
 // ─── Format Conversions ─────────────────────────────────────────────────────
 
 interface AnthropicContentBlock {
-  type: "text" | "tool_use" | "web_search_tool_result" | "thinking";
+  type: "text" | "tool_use" | "web_search_tool_result" | "server_tool_use" | "thinking";
   text?: string;
   thinking?: string;
   id?: string;
@@ -148,7 +160,7 @@ function toAnthropicMessage(msg: UnifiedMessage): Record<string, unknown> {
       };
     }
     return { type: "text", text: block.text };
-  });
+  }).filter((b) => !(b.type === "text" && !b.text));
 
   return { role: msg.role, content: blocks };
 }
@@ -169,8 +181,12 @@ function fromAnthropicBlock(block: AnthropicContentBlock): ContentBlock | null {
       .join("\n\n");
     return { type: "text", text: formatted };
   }
-  // Thinking blocks are internal reasoning; don't show to user
-  if (block.type === "thinking") {
+  // Thinking and server_tool_use blocks are internal; don't surface to user
+  if (block.type === "thinking" || block.type === "server_tool_use") {
+    return null;
+  }
+  // Skip blocks with no text content (safety net)
+  if (!block.text) {
     return null;
   }
   return { type: "text", text: block.text };

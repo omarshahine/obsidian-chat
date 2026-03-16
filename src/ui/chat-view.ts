@@ -3,6 +3,7 @@ import { mount, unmount } from "svelte";
 import type ChatPlugin from "../main";
 import ChatContainer from "./ChatContainer.svelte";
 import type { ToolResult, SelectionScope } from "../types";
+import { getModelDisplayName } from "../settings";
 
 export const VIEW_TYPE_CHAT = "ochat-view";
 
@@ -45,10 +46,11 @@ export class ObsidianChatView extends ItemView {
         app: this.app,
         component: this,
         provider: this.plugin.settings.provider,
-        model: this.plugin.settings.model,
+        model: getModelDisplayName(this.plugin.settings.provider, this.plugin.settings.model),
         onSend: (text: string, selection: SelectionScope | null) =>
           this.handleUserMessage(text, selection),
         onClear: () => this.handleClear(),
+        onStop: () => this.handleStop(),
       },
     });
 
@@ -102,6 +104,11 @@ export class ObsidianChatView extends ItemView {
   /** Focus the input */
   focus(): void {
     this.chatContainer?.focus();
+  }
+
+  /** Update the model display name in the header */
+  updateModel(name: string): void {
+    this.chatContainer?.setModel(name);
   }
 
   /** Clear conversation */
@@ -173,7 +180,21 @@ export class ObsidianChatView extends ItemView {
       this.running = false;
       chat.setInputEnabled(true);
       chat.focus();
+      // Persist after each turn
+      this.plugin.saveChatHistory();
     }
+  }
+
+  private handleStop(): void {
+    this.plugin.agent.abort();
+    this.running = false;
+    const chat = this.chatContainer;
+    if (chat) {
+      chat.hideThinking();
+      chat.setInputEnabled(true);
+      chat.focus();
+    }
+    this.plugin.saveChatHistory();
   }
 
   private handleClear(): void {
@@ -183,5 +204,7 @@ export class ObsidianChatView extends ItemView {
     this.chatContainer?.clearMessages();
     this.running = false;
     this.chatContainer?.setInputEnabled(true);
+    // Clear persisted state
+    this.plugin.saveChatHistory();
   }
 }

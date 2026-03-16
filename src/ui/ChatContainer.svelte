@@ -19,10 +19,12 @@
     model: string;
     onSend: (text: string, selection: SelectionScope | null) => void;
     onClear: () => void;
+    onStop: () => void;
   }
 
-  let { app, component, provider, model, onSend, onClear }: Props = $props();
+  let { app, component, provider, model, onSend, onClear, onStop }: Props = $props();
 
+  let displayModel = $state("");
   let messages = $state<ChatMessage[]>([]);
   let inputText = $state("");
   let inputEnabled = $state(true);
@@ -36,6 +38,11 @@
 
   // ask_user support
   let askUserResolve: ((value: string) => void) | null = $state(null);
+
+  // Sync model prop to local state (also updateable via setModel)
+  $effect(() => {
+    displayModel = model;
+  });
 
   // Auto-scroll when messages change
   $effect(() => {
@@ -115,6 +122,11 @@
     textareaEl?.focus();
   }
 
+  /** Update the model display name in the header */
+  export function setModel(name: string): void {
+    displayModel = name;
+  }
+
   /** Set the selection scope (shows pill in UI) */
   export function setSelection(sel: SelectionScope): void {
     selection = sel;
@@ -163,7 +175,7 @@
   function autoGrow(): void {
     if (!textareaEl) return;
     textareaEl.style.height = "auto";
-    textareaEl.style.height = Math.min(textareaEl.scrollHeight, 150) + "px";
+    textareaEl.style.height = Math.min(textareaEl.scrollHeight, 300) + "px";
   }
 
   function resetHeight(): void {
@@ -202,7 +214,7 @@
   <div class="ochat-header">
     <div class="ochat-header-left">
       <span class="ochat-header-title">Chat</span>
-      <span class="ochat-header-model">{model || "No model"}</span>
+      <span class="ochat-header-model">{displayModel || "No model"}</span>
     </div>
     <button class="ochat-clear-btn" onclick={onClear}>Clear</button>
   </div>
@@ -290,14 +302,23 @@
       onkeydown={handleKeydown}
       oninput={autoGrow}
     ></textarea>
-    <button
-      class="ochat-send-btn"
-      disabled={!inputEnabled}
-      onclick={handleSend}
-      aria-label="Send message"
-    >
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
-    </button>
+    {#if inputEnabled}
+      <button
+        class="ochat-send-btn"
+        onclick={handleSend}
+        aria-label="Send message"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+      </button>
+    {:else}
+      <button
+        class="ochat-send-btn ochat-stop-btn"
+        onclick={onStop}
+        aria-label="Stop generation"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="4" y="4" width="16" height="16" rx="2"></rect></svg>
+      </button>
+    {/if}
   </div>
 </div>
 
@@ -361,6 +382,8 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+    -webkit-user-select: text;
+    user-select: text;
   }
 
   .ochat-msg {
@@ -369,6 +392,8 @@
     border-radius: var(--radius-m);
     line-height: 1.5;
     word-wrap: break-word;
+    -webkit-user-select: text;
+    user-select: text;
   }
 
   .ochat-user-msg {
@@ -505,7 +530,7 @@
     padding: 8px 12px;
     padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
     border-top: 1px solid var(--background-modifier-border);
-    background: var(--background-primary);
+    background: transparent;
     flex-shrink: 0;
   }
 
@@ -520,7 +545,7 @@
     background-color: var(--background-secondary);
     color: var(--text-normal);
     line-height: 1.4;
-    max-height: 150px;
+    max-height: 300px;
     overflow-y: auto;
     box-shadow: none;
   }
@@ -561,6 +586,15 @@
   .ochat-send-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+  }
+
+  .ochat-stop-btn {
+    background-color: var(--text-error);
+  }
+
+  .ochat-stop-btn:hover {
+    background-color: var(--text-error);
+    opacity: 0.85;
   }
 
   /* ─── Selection Pill ─────────────────────────────────────────────────── */

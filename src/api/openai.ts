@@ -84,6 +84,7 @@ export async function sendOpenAIMessage(
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
+      throw: false,
     });
   } catch (e: unknown) {
     const err = e as Record<string, unknown>;

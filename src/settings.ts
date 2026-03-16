@@ -23,6 +23,14 @@ const FALLBACK_MODELS: Record<string, ModelOption[]> = {
 // Cache fetched models per provider so they survive tab re-opens
 const modelCache = new Map<string, ModelOption[]>();
 
+/** Resolve a model ID to its display name */
+export function getModelDisplayName(provider: string, modelId: string): string {
+  const cached = modelCache.get(provider);
+  const models = cached || FALLBACK_MODELS[provider] || [];
+  const match = models.find((m) => m.value === modelId);
+  return match?.label || modelId;
+}
+
 // ─── Settings Tab ───────────────────────────────────────────────────────────
 
 export class ChatSettingTab extends PluginSettingTab {
