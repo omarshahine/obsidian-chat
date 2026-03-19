@@ -2,6 +2,10 @@
 
 An agentic AI chat plugin for Obsidian. Two providers, best models, no bloat.
 
+<p align="center">
+  <img src="assets/screenshot-mobile.jpeg" alt="Obsidian Chat on mobile" width="300">
+</p>
+
 ## Philosophy
 
 Existing AI plugins for Obsidian are overcomplicated, break on mobile, or require a dozen settings to configure. Obsidian Chat takes the opposite approach: pick a provider, enter your API key, and start talking. The AI reads your notes, makes edits, creates files, and asks clarifying questions, all through a simple chat interface.
