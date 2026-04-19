@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "node esbuild.config.mjs production",
-    "svelte-check": "svelte-check --tsconfig tsconfig.json"
+    "svelte-check": "svelte-check --tsconfig tsconfig.json",
+    "release": "./scripts/release.sh"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
