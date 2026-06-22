@@ -84,6 +84,9 @@ export class ChatSettingTab extends PluginSettingTab {
             .setValue(s.baseUrl)
             .onChange(async (value) => {
               s.baseUrl = value.trim().replace(/\/+$/, "");
+              // Model availability depends on the endpoint; drop the cached
+              // list so a stale set from the previous Base URL isn't shown.
+              modelCache.delete(s.provider);
               await this.plugin.saveSettings();
             })
         );
@@ -189,8 +192,10 @@ export class ChatSettingTab extends PluginSettingTab {
       );
     }
 
-    // Custom model text field (shown when Custom... selected or model is empty)
-    if (!s.model) {
+    // Custom model text field (shown when Custom... is selected, i.e. the
+    // saved model isn't one of the listed options — covers empty model and
+    // saved-but-unlisted custom IDs so they remain visible and editable)
+    if (!models.some((m) => m.value === s.model)) {
       new Setting(containerEl)
         .setName("Custom model ID")
         .setDesc(
