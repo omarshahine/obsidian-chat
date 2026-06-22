@@ -61,16 +61,21 @@ export async function sendCustomMessage(
       }
 
       if (msg.role === "assistant") {
-        const entry: Record<string, unknown> = { role: "assistant" };
-        if (textParts.length > 0) {
-          entry.content = textParts.join("");
-        } else {
-          entry.content = null;
+        const hasText = textParts.length > 0;
+        const hasToolCalls = toolCalls.length > 0;
+        // Skip fully empty assistant turns. Emitting { content: null } with no
+        // tool_calls is rejected by some OpenAI-compatible servers; when tool
+        // calls are present we send "" rather than null for broad compatibility.
+        if (hasText || hasToolCalls) {
+          const entry: Record<string, unknown> = {
+            role: "assistant",
+            content: hasText ? textParts.join("") : "",
+          };
+          if (hasToolCalls) {
+            entry.tool_calls = toolCalls;
+          }
+          apiMessages.push(entry);
         }
-        if (toolCalls.length > 0) {
-          entry.tool_calls = toolCalls;
-        }
-        apiMessages.push(entry);
       } else if (textParts.length > 0) {
         apiMessages.push({ role: "user", content: textParts.join("") });
       }

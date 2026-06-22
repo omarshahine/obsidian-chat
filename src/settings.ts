@@ -67,6 +67,11 @@ export class ChatSettingTab extends PluginSettingTab {
             // otherwise the old provider's key gets saved under the new provider name
             s.provider = value as Provider;
             s.model = "";
+            // Custom providers don't support built-in web search; keep the
+            // stored flag in sync with the disabled toggle shown below.
+            if (s.provider === "custom") {
+              s.enableWebSearch = false;
+            }
             this.plugin.reloadApiKeyForProvider();
             await this.plugin.saveSettings();
             setTimeout(() => this.display(), 10);
