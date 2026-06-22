@@ -1,4 +1,4 @@
-﻿import { App, Notice, PluginSettingTab, Setting, requestUrl } from "obsidian";
+import { App, Notice, PluginSettingTab, Setting, requestUrl } from "obsidian";
 import type ChatPlugin from "./main";
 import type { Provider } from "./types";
 
@@ -63,6 +63,8 @@ export class ChatSettingTab extends PluginSettingTab {
           .addOption("custom", "Custom (OpenAI-compatible)")
           .setValue(s.provider)
           .onChange(async (value) => {
+            // Load the new provider's key BEFORE saving,
+            // otherwise the old provider's key gets saved under the new provider name
             s.provider = value as Provider;
             s.model = "";
             this.plugin.reloadApiKeyForProvider();
@@ -273,7 +275,7 @@ async function fetchModelsFromAPI(
 }
 
 async function fetchCustomModels(settings: ChatPlugin["settings"]): Promise<ModelOption[]> {
-  const baseUrl = (settings.baseUrl || "http://localhost:11434").replace(/\/+$/, "");
+  const baseUrl = (settings.baseUrl || "https://api.deepseek.com").replace(/\/+$/, "");
   let response;
   try {
     response = await requestUrl({

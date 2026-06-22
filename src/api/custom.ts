@@ -1,4 +1,4 @@
-﻿import { requestUrl } from "obsidian";
+import { requestUrl } from "obsidian";
 import type {
   ChatSettings,
   UnifiedMessage,
@@ -20,7 +20,7 @@ export async function sendCustomMessage(
   tools: UnifiedToolDef[],
   systemPrompt: string
 ): Promise<UnifiedResponse> {
-  const baseUrl = (settings.baseUrl || "http://localhost:11434").replace(/\/+$/, "");
+  const baseUrl = (settings.baseUrl || "https://api.deepseek.com").replace(/\/+$/, "");
   const model = settings.model || "deepseek-chat";
 
   const apiMessages: Record<string, unknown>[] = [];

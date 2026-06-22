@@ -1,4 +1,4 @@
-﻿import type { ChatSettings, UnifiedMessage, UnifiedToolDef, UnifiedResponse } from "../types";
+import type { ChatSettings, UnifiedMessage, UnifiedToolDef, UnifiedResponse } from "../types";
 import { sendAnthropicMessage } from "./anthropic";
 import { sendOpenAIMessage } from "./openai";
 import { sendCustomMessage } from "./custom";
