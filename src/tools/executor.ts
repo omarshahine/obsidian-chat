@@ -156,7 +156,12 @@ async function editDocument(
         };
       }
 
-      return { result: `${resultMsg}Successfully replaced text in ${file.path}.`, isError: false };
+      return {
+        result: `${resultMsg}Successfully replaced text in ${file.path}.`,
+        isError: false,
+        // Diff is just the changed snippets — never the whole file.
+        diff: { path: file.path, before: find, after: content },
+      };
     }
 
     case "insert": {
