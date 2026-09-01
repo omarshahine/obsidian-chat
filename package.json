@@ -9,7 +9,7 @@
     "release": "./scripts/release.sh"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^26.4.0",
     "esbuild": "^0.28.2",
     "esbuild-svelte": "^0.9.4",
     "obsidian": "^1.7.2",
