@@ -2,10 +2,20 @@ version: 2
 # Monthly and grouped on purpose: ungrouped weekly updates across this fleet
 # would be dozens of PRs a week. One PR per group per month is something a
 # person can actually read.
-#
-# No github-actions entry: this repo has no .github/workflows, so the entry
-# would match nothing. Add one alongside the first workflow.
 updates:
+  # CI workflows exist now, so their actions are managed here too. Pinned to
+  # commit SHAs in the workflow; Dependabot rewrites the SHA and the trailing
+  # version comment together.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: deps
+
   # ⚠️ Without this entry Dependabot never looks at package-lock.json at all,
   # and security advisories accumulate forever with nothing opening a PR.
   #
@@ -42,3 +52,15 @@ updates:
           - "@types/*"
     commit-message:
       prefix: deps
+    ignore:
+      # TypeScript 7 is blocked upstream, not by anything in this repo.
+      # svelte-check peers `typescript@^5.0.0 || ^6.0.0` -- still true on its
+      # newest release, 4.7.6 -- so `npm ci` dies with ERESOLVE before a single
+      # file is checked. That is exactly what PR #12 hit.
+      #
+      # Scoped to >=7 rather than to majors on purpose: svelte-check accepts
+      # TypeScript 6, so that bump should still be offered. Drop this entry
+      # when svelte-check widens its peer range to 7, and check that first
+      # rather than assuming this repo's own code is the blocker.
+      - dependency-name: "typescript"
+        versions: [">=7"]
