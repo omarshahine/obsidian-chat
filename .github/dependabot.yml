@@ -1,0 +1,44 @@
+version: 2
+# Monthly and grouped on purpose: ungrouped weekly updates across this fleet
+# would be dozens of PRs a week. One PR per group per month is something a
+# person can actually read.
+#
+# No github-actions entry: this repo has no .github/workflows, so the entry
+# would match nothing. Add one alongside the first workflow.
+updates:
+  # ⚠️ Without this entry Dependabot never looks at package-lock.json at all,
+  # and security advisories accumulate forever with nothing opening a PR.
+  #
+  # No `production` group: every dependency here is a devDependency (svelte,
+  # esbuild, obsidian, typescript, @types/node). Add one with the first
+  # runtime dependency.
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: monthly
+    groups:
+      # ⚠️ Security updates are NOT grouped by default, so three advisories in
+      # one lockfile get three PRs that all edit it. Merging any one
+      # invalidates the other two, `@dependabot recreate` rebuilds them, and
+      # the next merge breaks them again -- a loop this fleet actually hit on
+      # Lobster, findmy-cli and openclaw-parcel. This group ends it.
+      security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      # typescript moves ahead of everything built on its API, so a TS major
+      # bundled into the dev group takes the healthy updates down with it.
+      # On its own it fails alone and visibly instead.
+      typescript:
+        patterns:
+          - "typescript"
+      types:
+        patterns:
+          - "@types/*"
+      development:
+        dependency-type: development
+        exclude-patterns:
+          - "typescript"
+          - "@types/*"
+    commit-message:
+      prefix: deps
