@@ -2,6 +2,7 @@ import { App } from "obsidian";
 import type {
   ChatSettings,
   UnifiedMessage,
+  OpenAIConversationState,
   ContentBlock,
   AgentCallbacks,
   SelectionScope,
@@ -46,6 +47,12 @@ export class AgentLoop {
   private app: App;
   private settings: ChatSettings;
   private aborted = false;
+  /**
+   * OpenAI Responses API chaining state, owned per loop so that concurrent
+   * sessions never chain onto each other's conversation. See
+   * OpenAIConversationState.
+   */
+  private openaiState: OpenAIConversationState = { previousResponseId: null };
 
   constructor(app: App, settings: ChatSettings) {
     this.app = app;
@@ -61,7 +68,7 @@ export class AgentLoop {
   clear(): void {
     this.messages = [];
     this.aborted = false;
-    clearOpenAIState();
+    clearOpenAIState(this.openaiState);
   }
 
   /** Export API messages for persistence */
@@ -72,6 +79,20 @@ export class AgentLoop {
   /** Restore API messages from persistence */
   importMessages(messages: UnifiedMessage[]): void {
     this.messages = messages;
+  }
+
+  /** Export the provider chaining state for persistence */
+  exportOpenAIState(): OpenAIConversationState {
+    return { ...this.openaiState };
+  }
+
+  /**
+   * Restore provider chaining state. Persisting this matters: without it a
+   * reloaded OpenAI session would start a fresh server-side chain while the
+   * local transcript still showed the old turns.
+   */
+  importOpenAIState(state: OpenAIConversationState | undefined): void {
+    this.openaiState = { previousResponseId: state?.previousResponseId ?? null };
   }
 
   /** Export the full conversation as a readable markdown transcript */
@@ -183,7 +204,8 @@ export class AgentLoop {
           this.settings,
           this.messages,
           TOOL_DEFINITIONS,
-          systemPrompt
+          systemPrompt,
+          this.openaiState
         );
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);

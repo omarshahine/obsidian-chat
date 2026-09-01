@@ -127,7 +127,10 @@ export class ChatSettingTab extends PluginSettingTab {
               s,
               [{ role: "user", content: "Say hello in one word." }],
               [],
-              "You are a test. Respond with one word."
+              "You are a test. Respond with one word.",
+              // Throwaway chaining state: a connection test must never attach
+              // itself to a real conversation.
+              { previousResponseId: null }
             );
             const text = response.content
               .filter((b) => b.type === "text")

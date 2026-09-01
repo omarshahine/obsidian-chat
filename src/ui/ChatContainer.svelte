@@ -20,11 +20,26 @@
     onSend: (text: string, selection: SelectionScope | null) => void;
     onClear: () => void;
     onStop: () => void;
+    onNewSession: () => void;
+    onSelectSession: (id: string) => void;
   }
 
-  let { app, component, provider, model, onSend, onClear, onStop }: Props = $props();
+  let {
+    app,
+    component,
+    provider,
+    model,
+    onSend,
+    onClear,
+    onStop,
+    onNewSession,
+    onSelectSession,
+  }: Props = $props();
 
   let displayModel = $state("");
+  // Session switcher state, pushed in from chat-view.ts via setSessions().
+  let sessions = $state<Array<{ id: string; title: string }>>([]);
+  let activeSessionId = $state("");
   let messages = $state<ChatMessage[]>([]);
   let inputText = $state("");
   let inputEnabled = $state(true);
@@ -123,6 +138,20 @@
   }
 
   /** Update the model display name in the header */
+  /** Replace the session list shown in the switcher. */
+  export function setSessions(
+    list: Array<{ id: string; title: string }>,
+    activeId: string
+  ): void {
+    sessions = list;
+    activeSessionId = activeId;
+  }
+
+  function handleSessionChange(event: Event): void {
+    const id = (event.currentTarget as HTMLSelectElement).value;
+    if (id && id !== activeSessionId) onSelectSession(id);
+  }
+
   export function setModel(name: string): void {
     displayModel = name;
   }
@@ -213,10 +242,26 @@
   <!-- Header -->
   <div class="ochat-header">
     <div class="ochat-header-left">
-      <span class="ochat-header-title">Chat</span>
+      {#if sessions.length > 1}
+        <select
+          class="ochat-session-select"
+          aria-label="Active chat"
+          value={activeSessionId}
+          onchange={handleSessionChange}
+        >
+          {#each sessions as s (s.id)}
+            <option value={s.id}>{s.title}</option>
+          {/each}
+        </select>
+      {:else}
+        <span class="ochat-header-title">Chat</span>
+      {/if}
       <span class="ochat-header-model">{displayModel || "No model"}</span>
     </div>
-    <button class="ochat-clear-btn" onclick={onClear}>Clear</button>
+    <div class="ochat-header-actions">
+      <button class="ochat-clear-btn" onclick={onNewSession} aria-label="New chat">New</button>
+      <button class="ochat-clear-btn" onclick={onClear}>Clear</button>
+    </div>
   </div>
 
   <!-- Messages -->
@@ -356,6 +401,28 @@
   .ochat-header-model {
     font-size: var(--font-ui-smaller);
     color: var(--text-muted);
+  }
+
+  .ochat-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+
+  /*
+   * A native select keeps the switcher usable on mobile (where Obsidian
+   * renders the chat as a slide-in panel) without building a custom menu.
+   */
+  .ochat-session-select {
+    font-weight: var(--font-weight-bold, 600);
+    font-size: var(--font-ui-medium);
+    color: var(--text-normal);
+    background: none;
+    border: none;
+    padding: 0;
+    max-width: 15ch;
+    cursor: pointer;
   }
 
   .ochat-clear-btn {

@@ -5,20 +5,14 @@ import type {
   UnifiedToolDef,
   UnifiedResponse,
   ContentBlock,
+  OpenAIConversationState,
 } from "../types";
 
 const DEFAULT_OPENAI_URL = "https://api.openai.com";
 
-/**
- * Stores raw output items from each API response so they can be replayed
- * verbatim in subsequent requests. The Responses API requires exact
- * function_call items (with all fields) when sending function_call_output.
- */
-let previousResponseId: string | null = null;
-
 /** Clear stored state (call on conversation clear) */
-export function clearOpenAIState(): void {
-  previousResponseId = null;
+export function clearOpenAIState(state: OpenAIConversationState): void {
+  state.previousResponseId = null;
 }
 
 /**
@@ -31,13 +25,14 @@ export async function sendOpenAIMessage(
   settings: ChatSettings,
   messages: UnifiedMessage[],
   tools: UnifiedToolDef[],
-  systemPrompt: string
+  systemPrompt: string,
+  state: OpenAIConversationState
 ): Promise<UnifiedResponse> {
   const baseUrl = DEFAULT_OPENAI_URL;
   const model = settings.model || "gpt-5.3-codex";
 
   // Build input: only the NEW items for this turn
-  const input = buildCurrentTurnInput(messages, systemPrompt);
+  const input = buildCurrentTurnInput(messages, systemPrompt, state);
 
   const body: Record<string, unknown> = {
     model,
@@ -45,8 +40,8 @@ export async function sendOpenAIMessage(
   };
 
   // Chain to previous response for multi-turn context
-  if (previousResponseId) {
-    body.previous_response_id = previousResponseId;
+  if (state.previousResponseId) {
+    body.previous_response_id = state.previousResponseId;
   }
 
   // Reasoning for reasoning-capable models
@@ -103,7 +98,7 @@ export async function sendOpenAIMessage(
   const data = response.json;
 
   // Store response ID for chaining
-  previousResponseId = data.id || null;
+  state.previousResponseId = data.id || null;
 
   return fromResponsesOutput(data);
 }
@@ -119,12 +114,13 @@ export async function sendOpenAIMessage(
  */
 function buildCurrentTurnInput(
   messages: UnifiedMessage[],
-  systemPrompt: string
+  systemPrompt: string,
+  state: OpenAIConversationState
 ): Record<string, unknown>[] {
   const items: Record<string, unknown>[] = [];
 
   // If no previous response (first call), include all messages
-  if (!previousResponseId) {
+  if (!state.previousResponseId) {
     items.push({
       type: "message",
       role: "developer",

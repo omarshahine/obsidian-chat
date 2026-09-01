@@ -51,35 +51,71 @@ export class ObsidianChatView extends ItemView {
           this.handleUserMessage(text, selection),
         onClear: () => this.handleClear(),
         onStop: () => this.handleStop(),
+        onNewSession: () => this.plugin.newChat(),
+        onSelectSession: (id: string) => this.switchSession(id),
       },
     });
 
-    // Replay chat history into the UI
-    for (const msg of this.plugin.chatHistory) {
+    this.renderActiveSession();
+  }
+
+  /**
+   * Paint the active session's transcript and refresh the switcher. Called on
+   * open and on every session change, so the view always reflects exactly one
+   * session's history.
+   */
+  renderActiveSession(): void {
+    const chat = this.chatContainer;
+    if (!chat) return;
+
+    const active = this.plugin.sessions.active();
+    chat.setSessions(
+      this.plugin.sessions.list().map((s) => ({ id: s.id, title: s.title })),
+      active.id
+    );
+
+    chat.clearMessages();
+    for (const msg of active.chatHistory) {
       switch (msg.type) {
         case "user":
-          this.chatContainer.addUserMessage(msg.text!);
+          chat.addUserMessage(msg.text!);
           break;
         case "assistant":
-          this.chatContainer.addAssistantMessage(msg.text!);
+          chat.addAssistantMessage(msg.text!);
           break;
         case "tool-result":
           if (msg.toolName && msg.toolResult) {
-            const id = this.chatContainer.addToolCall(msg.toolName, msg.toolInput || {});
-            this.chatContainer.updateToolResult(id, msg.toolName, msg.toolResult);
+            const id = chat.addToolCall(msg.toolName, msg.toolInput || {});
+            chat.updateToolResult(id, msg.toolName, msg.toolResult);
           }
           break;
         case "error":
-          this.chatContainer.addError(msg.text!);
+          chat.addError(msg.text!);
           break;
       }
     }
 
-    this.chatContainer.focus();
+    chat.setInputEnabled(true);
+    chat.focus();
+  }
+
+  /**
+   * Switch which session the view shows. Refuses mid-turn so a running
+   * agent's callbacks cannot write into the wrong transcript.
+   */
+  private switchSession(id: string): void {
+    if (this.running) {
+      new Notice("Please wait for the current response to complete.");
+      this.renderActiveSession();
+      return;
+    }
+    if (!this.plugin.sessions.setActive(id)) return;
+    this.renderActiveSession();
+    void this.plugin.saveChatHistory();
   }
 
   async onClose(): Promise<void> {
-    this.plugin.agent.abort();
+    this.plugin.sessions.active().agent.abort();
     if (this.chatContainer) {
       unmount(this.chatContainer);
       this.chatContainer = undefined;
@@ -88,7 +124,7 @@ export class ObsidianChatView extends ItemView {
 
   /** Export the full transcript for debugging */
   getTranscript(): string {
-    return this.plugin.agent.exportTranscript();
+    return this.plugin.sessions.active().agent.exportTranscript();
   }
 
   /** Programmatically send a message */
@@ -126,17 +162,26 @@ export class ObsidianChatView extends ItemView {
     }
 
     const chat = this.chatContainer!;
-    const history = this.plugin.chatHistory;
+    // Pin the session for the whole turn. The user can't switch mid-turn, but
+    // resolving it once keeps every callback below writing to one transcript.
+    const session = this.plugin.sessions.active();
+    const history = session.chatHistory;
 
     this.running = true;
     chat.addUserMessage(text);
     history.push({ type: "user", text });
+    session.maybeTitleFrom(text);
+    session.touch();
+    chat.setSessions(
+      this.plugin.sessions.list().map((s) => ({ id: s.id, title: s.title })),
+      session.id
+    );
     chat.setInputEnabled(false);
 
     const toolCallIds = new Map<string, number>();
 
     try {
-      await this.plugin.agent.run(text, {
+      await session.agent.run(text, {
         onThinking: () => {
           chat.showThinking();
         },
@@ -178,6 +223,7 @@ export class ObsidianChatView extends ItemView {
       history.push({ type: "error", text: `Unexpected error: ${msg}` });
     } finally {
       this.running = false;
+      session.touch();
       chat.setInputEnabled(true);
       chat.focus();
       // Persist after each turn
@@ -186,7 +232,7 @@ export class ObsidianChatView extends ItemView {
   }
 
   private handleStop(): void {
-    this.plugin.agent.abort();
+    this.plugin.sessions.active().agent.abort();
     this.running = false;
     const chat = this.chatContainer;
     if (chat) {
@@ -198,9 +244,11 @@ export class ObsidianChatView extends ItemView {
   }
 
   private handleClear(): void {
-    this.plugin.agent.abort();
-    this.plugin.agent.clear();
-    this.plugin.chatHistory = [];
+    const session = this.plugin.sessions.active();
+    session.agent.abort();
+    session.agent.clear();
+    session.chatHistory = [];
+    session.touch();
     this.chatContainer?.clearMessages();
     this.running = false;
     this.chatContainer?.setInputEnabled(true);

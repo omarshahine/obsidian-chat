@@ -1,4 +1,10 @@
-import type { ChatSettings, UnifiedMessage, UnifiedToolDef, UnifiedResponse } from "../types";
+import type {
+  ChatSettings,
+  UnifiedMessage,
+  UnifiedToolDef,
+  UnifiedResponse,
+  OpenAIConversationState,
+} from "../types";
 import { sendAnthropicMessage } from "./anthropic";
 import { sendOpenAIMessage } from "./openai";
 import { sendCustomMessage } from "./custom";
@@ -11,7 +17,8 @@ export async function sendMessage(
   settings: ChatSettings,
   messages: UnifiedMessage[],
   tools: UnifiedToolDef[],
-  systemPrompt: string
+  systemPrompt: string,
+  openaiState: OpenAIConversationState
 ): Promise<UnifiedResponse> {
   const doSend = () => {
     if (settings.provider === "anthropic") {
@@ -20,7 +27,7 @@ export async function sendMessage(
     if (settings.provider === "custom") {
       return sendCustomMessage(settings, messages, tools, systemPrompt);
     }
-    return sendOpenAIMessage(settings, messages, tools, systemPrompt);
+    return sendOpenAIMessage(settings, messages, tools, systemPrompt, openaiState);
   };
 
   try {

@@ -12,19 +12,21 @@ import type { ChatSettings, SelectionScope } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
 import { ChatSettingTab, getModelDisplayName } from "./settings";
 import { ObsidianChatView, VIEW_TYPE_CHAT } from "./ui/chat-view";
-import { AgentLoop } from "./agent/loop";
+import { SessionStore } from "./sessions";
 
 export default class ChatPlugin extends Plugin {
   settings: ChatSettings = DEFAULT_SETTINGS;
-  /** Shared agent loop that persists across view open/close cycles */
-  agent!: AgentLoop;
-  /** Chat messages for replaying into the UI when the view reopens */
-  chatHistory: Array<{ type: string; text?: string; toolName?: string; toolInput?: Record<string, unknown>; toolResult?: { result: string; isError: boolean } }> = [];
+  /**
+   * Every open conversation. Each session owns its own AgentLoop, so
+   * switching chats swaps the agent state too rather than replaying one
+   * history through a shared loop.
+   */
+  sessions!: SessionStore;
 
   async onload(): Promise<void> {
     await this.loadSettings();
 
-    this.agent = new AgentLoop(this.app, this.settings);
+    this.sessions = new SessionStore(this.app, this.settings);
 
     // Restore persisted chat history
     await this.loadChatHistory();
@@ -41,6 +43,9 @@ export default class ChatPlugin extends Plugin {
         const menu = new Menu();
         menu.addItem((item) =>
           item.setTitle("Open chat").setIcon("message-circle").onClick(() => this.openChat())
+        );
+        menu.addItem((item) =>
+          item.setTitle("New chat").setIcon("plus").onClick(() => this.newChat())
         );
         menu.addItem((item) =>
           item.setTitle("Chat about active note").setIcon("file-text").onClick(() => this.chatAboutActiveNote())
@@ -72,6 +77,12 @@ export default class ChatPlugin extends Plugin {
       id: "clear-chat",
       name: "Clear conversation",
       callback: () => this.clearChat(),
+    });
+
+    this.addCommand({
+      id: "new-chat",
+      name: "New chat",
+      callback: () => this.newChat(),
     });
 
     // Editor command: chat about the current note (only when editor is active)
@@ -132,6 +143,7 @@ export default class ChatPlugin extends Plugin {
   }
 
   async onunload(): Promise<void> {
+    for (const session of this.sessions.list()) session.agent.abort();
     await this.saveChatHistory();
     this.app.workspace.detachLeavesOfType(VIEW_TYPE_CHAT);
   }
@@ -146,15 +158,23 @@ export default class ChatPlugin extends Plugin {
     await this.activateView();
   }
 
-  /** Open chat and immediately send a message */
+  /**
+   * Open chat and immediately send a message, in a fresh session.
+   *
+   * Note-driven entry points start their own conversation rather than
+   * appending to whatever was already open — asking about a note should not
+   * hijack an unrelated thread in progress.
+   */
   private async openChatWithMessage(message: string): Promise<void> {
     if (!this.settings.apiKey) {
       new Notice("Please configure your API key in Obsidian Chat settings.");
       return;
     }
+    this.sessions.createOrReuseEmpty();
     await this.activateView();
     const view = this.getChatView();
     if (view) {
+      view.renderActiveSession();
       setTimeout(() => view.sendMessage(message), 100);
     }
   }
@@ -165,14 +185,28 @@ export default class ChatPlugin extends Plugin {
       new Notice("Please configure your API key in Obsidian Chat settings.");
       return;
     }
+    this.sessions.createOrReuseEmpty();
     await this.activateView();
     const view = this.getChatView();
     if (view) {
+      view.renderActiveSession();
       setTimeout(() => {
         view.setSelection(selection);
         view.focus();
       }, 100);
     }
+  }
+
+  /** Start a new conversation and show it, leaving existing ones intact. */
+  async newChat(): Promise<void> {
+    if (!this.settings.apiKey) {
+      new Notice("Please configure your API key in Obsidian Chat settings.");
+      return;
+    }
+    this.sessions.createOrReuseEmpty();
+    await this.activateView();
+    this.getChatView()?.renderActiveSession();
+    await this.saveChatHistory();
   }
 
   private chatAboutActiveNote(): void {
@@ -234,6 +268,11 @@ export default class ChatPlugin extends Plugin {
     });
   }
 
+  /**
+   * Empty the current conversation in place. This keeps the session (and its
+   * position in the switcher) rather than deleting it, which is what the
+   * command has always meant.
+   */
   private clearChat(): void {
     const view = this.getChatView();
     if (view) {
@@ -248,10 +287,7 @@ export default class ChatPlugin extends Plugin {
 
   async saveChatHistory(): Promise<void> {
     try {
-      const state = {
-        chatHistory: this.chatHistory.slice(-100), // Cap at 100 UI messages
-        agentMessages: this.agent.exportMessages().slice(-80), // Cap at 80 API messages
-      };
+      const state = this.sessions.toPersisted();
       await this.app.vault.adapter.write(
         ".obsidian/plugins/obsidian-chat/chat-state.json",
         JSON.stringify(state)
@@ -266,13 +302,9 @@ export default class ChatPlugin extends Plugin {
       const raw = await this.app.vault.adapter.read(
         ".obsidian/plugins/obsidian-chat/chat-state.json"
       );
-      const state = JSON.parse(raw);
-      if (Array.isArray(state.chatHistory)) {
-        this.chatHistory = state.chatHistory;
-      }
-      if (Array.isArray(state.agentMessages)) {
-        this.agent.importMessages(state.agentMessages);
-      }
+      // Handles both the multi-session shape and the older single
+      // conversation, which is migrated into one session.
+      this.sessions.restore(JSON.parse(raw));
     } catch {
       // No saved state or parse error — start fresh
     }
