@@ -74,10 +74,27 @@ Select text in a note, right-click, and choose "Send selection to Chat". The sel
 | Command | Description |
 |---------|-------------|
 | Open chat | Open the chat sidebar |
+| New chat | Start a new session, leaving existing ones intact |
 | Chat about this note | Send the active note to chat (editor required) |
 | Send selection to Chat | Send selected text with scoped context |
-| Copy conversation transcript | Export the full conversation to clipboard |
-| Clear conversation | Reset the chat |
+| Copy conversation transcript | Export the active session's conversation to clipboard |
+| Clear conversation | Empty the active session (keeps the session) |
+
+## Chat sessions
+
+Multiple conversations can be open at once. Each keeps its own transcript and
+its own agent state, so context never carries between them.
+
+- **New chat** starts a session; existing ones keep their history.
+- Once more than one session exists, a dropdown appears in the chat header to
+  switch between them. Sessions are named after their first message.
+- Sessions are **not** scoped to a note — a chat can range across the whole
+  vault, which is the point of the plugin. "Chat about this note" and "Send
+  selection to Chat" start a new session rather than interrupting the one
+  you are in.
+- Switching is blocked while a response is streaming, so a reply always lands
+  in the conversation that asked for it.
+- The 20 most recently used sessions are kept; older ones are dropped.
 
 ## Context menus
 
