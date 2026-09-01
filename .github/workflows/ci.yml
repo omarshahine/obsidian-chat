@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  # One in-flight run per ref. github.ref is refs/pull/N/merge for PRs and
+  # refs/heads/main for pushes, so PR and main runs never share a group.
+  group: ci-${{ github.ref }}
+  # Cancel superseded runs on PRs only. Pushes to main run to completion so the
+  # green/red record for every commit on main survives a rapid follow-up push.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# These jobs only read the repository; nothing publishes or writes.
+permissions:
+  contents: read
+
+jobs:
+  check:
+    # Split into one job per script so a failure names itself in the checks list
+    # (build vs svelte-check) instead of hiding inside a single combined job.
+    name: npm run ${{ matrix.check }} (node 24)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [build, svelte-check]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          # The bundle is es2022 CJS for Obsidian's Electron renderer, and
+          # manifest.json sets isDesktopOnly: false, so it also runs in the mobile
+          # webview where there is no Node at all. Node here only runs esbuild and
+          # svelte-check. Pinned to 24 to match the Node bundled by current
+          # Obsidian desktop (1.13.7 -> Electron 43.3.0 -> Node 24.18.1), the top
+          # of the 20-24 range the plugin supports.
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      # package-lock.json is committed, so npm ci applies and a stale lockfile
+      # fails the build rather than being silently repaired.
+      - run: npm ci
+      - run: npm run ${{ matrix.check }}
