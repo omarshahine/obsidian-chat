@@ -7,10 +7,16 @@ on:
     branches: [main]
 
 concurrency:
-  # One in-flight run per ref. A new push to a PR cancels the superseded run;
-  # main pushes get their own group so they are never cancelled by PR activity.
+  # One in-flight run per ref. github.ref is refs/pull/N/merge for PRs and
+  # refs/heads/main for pushes, so PR and main runs never share a group.
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Cancel superseded runs on PRs only. Pushes to main run to completion so the
+  # green/red record for every commit on main survives a rapid follow-up push.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# These jobs only read the repository; nothing publishes or writes.
+permissions:
+  contents: read
 
 jobs:
   check:
