@@ -103,13 +103,22 @@ async function editDocument(
   input: Record<string, unknown>
 ): Promise<ToolResult> {
   const operation = input.operation as string;
-  const content = input.content as string;
+  const content = input.content as string | undefined;
   const find = input.find as string | undefined;
   const position = input.position as string | undefined;
 
   const file = resolveFile(app, input.path as string | undefined);
   if (!file) {
     return { result: input.path ? `File not found: ${input.path}` : "No active document open.", isError: true };
+  }
+
+  // `content` is schema-required, but the model can still omit it, and all three
+  // operations write it. Reject rather than coerce: the concatenations below
+  // splice the literal string "undefined" into the note, and defaulting to ""
+  // would blank the file outright on replace_all. Test for undefined, not
+  // falsiness — `content: ""` legitimately deletes the found text.
+  if (content === undefined) {
+    return { result: "'content' parameter is required.", isError: true };
   }
 
   switch (operation) {
