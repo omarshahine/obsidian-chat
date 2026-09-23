@@ -30,7 +30,7 @@ src/
     anthropic.ts         # Messages API, adaptive thinking, cache_control
     openai.ts            # Responses API, previous_response_id chaining
   tools/
-    registry.ts          # 9 tool definitions (JSON Schema)
+    registry.ts          # Tool definitions (JSON Schema)
     executor.ts          # Runs tools against Obsidian Vault APIs
   agent/
     loop.ts              # Core agentic loop with selection scope
