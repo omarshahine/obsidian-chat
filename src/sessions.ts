@@ -5,7 +5,7 @@ import type {
   SessionSnapshot,
   PersistedChatState,
 } from "./types";
-import { AgentLoop } from "./agent/loop";
+import { AgentLoop, trimToTurns } from "./agent/loop";
 
 /** Cap on UI transcript entries kept per session when persisting. */
 const MAX_HISTORY_PER_SESSION = 100;
@@ -71,7 +71,7 @@ export class ChatSession {
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
       chatHistory: this.chatHistory.slice(-MAX_HISTORY_PER_SESSION),
-      agentMessages: this.agent.exportMessages().slice(-MAX_AGENT_MESSAGES_PER_SESSION),
+      agentMessages: trimToTurns(this.agent.exportMessages(), MAX_AGENT_MESSAGES_PER_SESSION),
       openai: this.agent.exportOpenAIState(),
     };
   }
