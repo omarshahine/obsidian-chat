@@ -5,5 +5,9 @@ dist/
 data.json
 debug.log
 
+# Chat history, written into the plugin folder. In a dev setup that folder is
+# often a symlink to this repo, so it lands here.
+chat-state.json
+
 # Clawpatch local review state
 .clawpatch/
