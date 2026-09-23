@@ -17,8 +17,10 @@ import { buildSystemPrompt, buildContextMessage } from "./system-prompt";
 const MAX_CONVERSATION_LENGTH = 50;
 const KEEP_RECENT = 40;
 
-// Debug logging: writes transcript to the vault's plugin config folder
-const DEBUG = true;
+// Debug logging: writes transcript to the vault's plugin config folder.
+// Off in releases: it appends every prompt verbatim, never rotates, and the
+// plugin folder syncs between devices. Flip locally when you need it.
+const DEBUG = false;
 
 function debugLog(app: App, label: string, data: unknown): void {
   if (!DEBUG) return;
