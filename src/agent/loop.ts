@@ -46,7 +46,14 @@ export class AgentLoop {
   private messages: UnifiedMessage[] = [];
   private app: App;
   private settings: ChatSettings;
-  private aborted = false;
+  /**
+   * Bumped by abort(), clear() and every run(). A run only touches history or
+   * fires callbacks while the generation it started with is still current, so
+   * a stopped run that is still waiting on the network or a tool stays inert
+   * even after the next run or a clear has begun. (A shared boolean couldn't do
+   * that: the next run() or clear() reset it and revived the stopped run.)
+   */
+  private generation = 0;
   /**
    * OpenAI Responses API chaining state, owned per loop so that concurrent
    * sessions never chain onto each other's conversation. See
@@ -61,13 +68,13 @@ export class AgentLoop {
 
   /** Abort a running loop (e.g. user navigates away) */
   abort(): void {
-    this.aborted = true;
+    this.generation++;
   }
 
   /** Clear conversation history */
   clear(): void {
+    this.generation++;
     this.messages = [];
-    this.aborted = false;
     clearOpenAIState(this.openaiState);
   }
 
@@ -158,7 +165,8 @@ export class AgentLoop {
     callbacks: AgentCallbacks,
     selection?: SelectionScope | null
   ): Promise<void> {
-    this.aborted = false;
+    const generation = ++this.generation;
+    const stopped = () => generation !== this.generation;
 
     // Build context once per user turn and prepend to the user message
     const context = buildContext(this.app);
@@ -194,7 +202,7 @@ export class AgentLoop {
     const maxIterations = this.settings.maxIterations || 20;
 
     for (let i = 0; i < maxIterations; i++) {
-      if (this.aborted) return;
+      if (stopped()) return;
 
       callbacks.onThinking();
 
@@ -216,7 +224,7 @@ export class AgentLoop {
 
       debugLog(this.app, "API_RESPONSE", { stopReason: response.stopReason, contentTypes: response.content.map(b => b.type), usage: response.usage });
 
-      if (this.aborted) return;
+      if (stopped()) return;
 
       // Process response content blocks
       const toolCalls: ContentBlock[] = [];
@@ -252,7 +260,7 @@ export class AgentLoop {
       const resultBlocks: ContentBlock[] = [];
 
       for (const tc of toolCalls) {
-        if (this.aborted) return;
+        if (stopped()) return;
 
         callbacks.onToolCall(tc.name!, tc.input!);
 
@@ -262,6 +270,7 @@ export class AgentLoop {
           tc.input!,
           callbacks.onAskUser
         );
+        if (stopped()) return;
 
         callbacks.onToolResult(tc.name!, result);
 
