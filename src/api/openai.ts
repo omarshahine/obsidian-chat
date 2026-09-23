@@ -128,13 +128,20 @@ function buildCurrentTurnInput(
     });
 
     for (const msg of messages) {
-      if (typeof msg.content === "string") {
-        items.push({
-          type: "message",
-          role: msg.role === "assistant" ? "assistant" : "user",
-          content: msg.content,
-        });
-      }
+      // Assistant turns are stored as content blocks, never plain strings, so
+      // reading only string content would drop every reply. Tool calls and
+      // results are left out rather than translated; the text around them
+      // carries the conversation.
+      const text =
+        typeof msg.content === "string"
+          ? msg.content
+          : msg.content.filter((b) => b.type === "text").map((b) => b.text).join("");
+      if (!text) continue;
+      items.push({
+        type: "message",
+        role: msg.role === "assistant" ? "assistant" : "user",
+        content: text,
+      });
     }
     return items;
   }

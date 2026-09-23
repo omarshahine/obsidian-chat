@@ -6,7 +6,7 @@ import type {
   OpenAIConversationState,
 } from "../types";
 import { sendAnthropicMessage } from "./anthropic";
-import { sendOpenAIMessage } from "./openai";
+import { sendOpenAIMessage, clearOpenAIState } from "./openai";
 import { sendCustomMessage } from "./custom";
 
 /**
@@ -20,6 +20,13 @@ export async function sendMessage(
   systemPrompt: string,
   openaiState: OpenAIConversationState
 ): Promise<UnifiedResponse> {
+  // An OpenAI chain only holds the turns that went through it. Once a turn goes
+  // to another provider, chaining past it would send OpenAI just the newest
+  // message, so drop the chain and let the next OpenAI call resend history.
+  if (settings.provider === "anthropic" || settings.provider === "custom") {
+    clearOpenAIState(openaiState);
+  }
+
   const doSend = () => {
     if (settings.provider === "anthropic") {
       return sendAnthropicMessage(settings, messages, tools, systemPrompt);
