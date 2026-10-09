@@ -2,6 +2,7 @@
   import type { App, Component as ObsidianComponent } from "obsidian";
   import { MarkdownRenderer } from "obsidian";
   import type { ToolResult, SelectionScope } from "../types";
+  import { lineDiff } from "../util/diff";
 
   interface ChatMessage {
     id: number;
@@ -236,6 +237,14 @@
     if (str.length <= max) return str;
     return str.substring(0, max) + "\n... (truncated)";
   }
+
+  // Cap the rendered diff for very large edits: bounds the DOM and the O(n*m)
+  // line diff, mirroring the 2000-char truncate on the plain result fallback.
+  // Keyed on before/after, so it applies to any future edit type too.
+  const MAX_DIFF_CHARS = 6000;
+  function diffTooLarge(d: { before: string; after: string }): boolean {
+    return d.before.length + d.after.length > MAX_DIFF_CHARS;
+  }
 </script>
 
 <div class="ochat-container">
@@ -299,7 +308,21 @@
           </div>
           <details class="ochat-tool-details">
             <summary>{msg.toolResult?.isError ? "Error" : "Result"}</summary>
-            <pre class="ochat-tool-json">{truncate(msg.toolResult?.result ?? "", 2000)}</pre>
+            {#if msg.toolResult?.diff && !diffTooLarge(msg.toolResult.diff)}
+              {#if msg.toolResult.result}
+                <div class="ochat-diff-summary">{msg.toolResult.result}</div>
+              {/if}
+              <div class="ochat-diff">
+                <div class="ochat-diff-path">{msg.toolResult.diff.path}</div>
+                {#each lineDiff(msg.toolResult.diff.before, msg.toolResult.diff.after) as row}
+                  <div class="ochat-diff-row ochat-diff-{row.type}">
+                    <span class="ochat-diff-gutter">{row.type === "add" ? "+" : row.type === "del" ? "-" : " "}</span><span class="ochat-diff-text">{row.text}</span>
+                  </div>
+                {/each}
+              </div>
+            {:else}
+              <pre class="ochat-tool-json">{truncate(msg.toolResult?.result ?? "", 2000)}</pre>
+            {/if}
           </details>
         </div>
 
@@ -543,6 +566,76 @@
     overflow: auto;
     white-space: pre-wrap;
     word-break: break-all;
+  }
+
+  /* ─── Edit Diff ─────────────────────────────────────────────────────── */
+  .ochat-diff-summary {
+    margin-top: 4px;
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+    white-space: pre-wrap;
+  }
+
+  .ochat-diff {
+    margin-top: 6px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-s);
+    overflow: hidden;
+    font-family: var(--font-monospace);
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  .ochat-diff-path {
+    padding: 3px 8px;
+    background: var(--background-secondary);
+    color: var(--text-faint);
+    border-bottom: 1px solid var(--background-modifier-border);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .ochat-diff-row {
+    display: flex;
+    white-space: pre-wrap;
+    word-break: break-word;
+    /* Text stays high-contrast; only the background is tinted. */
+    color: var(--text-normal);
+  }
+
+  .ochat-diff-gutter {
+    flex: 0 0 1.4em;
+    text-align: center;
+    user-select: none;
+    font-weight: 600;
+  }
+
+  .ochat-diff-text {
+    flex: 1 1 auto;
+  }
+
+  /* Subtle background tint + colored gutter sign, à la Claude Code / GitHub.
+     Low-opacity tints read correctly in both light and dark themes. */
+  .ochat-diff-add {
+    background: rgba(46, 160, 67, 0.18);
+  }
+  .ochat-diff-add .ochat-diff-gutter {
+    color: var(--color-green);
+  }
+
+  .ochat-diff-del {
+    background: rgba(248, 81, 73, 0.18);
+  }
+  .ochat-diff-del .ochat-diff-gutter {
+    color: var(--color-red);
+  }
+
+  .ochat-diff-ctx {
+    color: var(--text-muted);
+  }
+  .ochat-diff-ctx .ochat-diff-gutter {
+    color: var(--text-faint);
   }
 
   /* ─── Spinner ───────────────────────────────────────────────────────── */
