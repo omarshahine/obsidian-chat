@@ -218,6 +218,9 @@ export class AgentLoop {
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         debugLog(this.app, "API_ERROR", { error: msg, model: this.settings.model, provider: this.settings.provider });
+        // A stopped run's request can still fail later; its error belongs to
+        // no one now, so don't show it in the current turn.
+        if (stopped()) return;
         callbacks.onError(msg);
         return;
       }
