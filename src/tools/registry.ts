@@ -1,8 +1,9 @@
 import type { UnifiedToolDef } from "../types";
 
 /**
- * All 9 tools the agent can call. Deliberately minimal:
- * read, edit, search, create, list, read-any, rename, delete, and ask-user.
+ * Every tool the agent can call, kept deliberately minimal. `executeTool`
+ * enforces each schema's `required` list before dispatching, so a tool can
+ * rely on those params being present.
  */
 export const TOOL_DEFINITIONS: UnifiedToolDef[] = [
   {

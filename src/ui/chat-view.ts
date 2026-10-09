@@ -17,6 +17,11 @@ export class ObsidianChatView extends ItemView {
   private plugin: ChatPlugin;
   private chatContainer: ReturnType<typeof ChatContainer> | undefined;
   private running = false;
+  /**
+   * Bumped by each turn, Stop and Clear. A stopped turn's promise still settles
+   * later; only the current turn may unlock input when it does.
+   */
+  private turn = 0;
 
   constructor(leaf: WorkspaceLeaf, plugin: ChatPlugin) {
     super(leaf);
@@ -168,6 +173,7 @@ export class ObsidianChatView extends ItemView {
     const history = session.chatHistory;
 
     this.running = true;
+    const turn = ++this.turn;
     chat.addUserMessage(text);
     history.push({ type: "user", text });
     session.maybeTitleFrom(text);
@@ -222,10 +228,12 @@ export class ObsidianChatView extends ItemView {
       chat.addError(`Unexpected error: ${msg}`);
       history.push({ type: "error", text: `Unexpected error: ${msg}` });
     } finally {
-      this.running = false;
       session.touch();
-      chat.setInputEnabled(true);
-      chat.focus();
+      if (turn === this.turn) {
+        this.running = false;
+        chat.setInputEnabled(true);
+        chat.focus();
+      }
       // Persist after each turn
       this.plugin.saveChatHistory();
     }
@@ -233,6 +241,7 @@ export class ObsidianChatView extends ItemView {
 
   private handleStop(): void {
     this.plugin.sessions.active().agent.abort();
+    this.turn++;
     this.running = false;
     const chat = this.chatContainer;
     if (chat) {
@@ -250,6 +259,7 @@ export class ObsidianChatView extends ItemView {
     session.chatHistory = [];
     session.touch();
     this.chatContainer?.clearMessages();
+    this.turn++;
     this.running = false;
     this.chatContainer?.setInputEnabled(true);
     // Clear persisted state
