@@ -1,7 +1,25 @@
 import { App, TFile, normalizePath } from "obsidian";
 import type { ToolResult } from "../types";
+import { TOOL_DEFINITIONS } from "./registry";
 
 type AskUserCallback = (question: string) => Promise<string>;
+
+/** Each tool's `required` params, read once from its schema. */
+const REQUIRED_PARAMS = new Map(
+  TOOL_DEFINITIONS.map((t) => [t.name, (t.inputSchema.required as string[] | undefined) ?? []])
+);
+
+/**
+ * The required params a call left out. Absent means undefined or null, not
+ * falsy: `content: ""` is a legitimate way to delete text with edit_document and
+ * a valid body for create_file. Checks that need more than presence (a non-empty
+ * path, properties being an object) and params required by only one operation
+ * (`find`, `position`) stay in the tools themselves.
+ */
+function missingRequiredParams(toolName: string, input: Record<string, unknown>): string[] {
+  const required = REQUIRED_PARAMS.get(toolName) ?? [];
+  return required.filter((name) => input[name] === undefined || input[name] === null);
+}
 
 /**
  * Executes a tool call against the Obsidian Vault API.
@@ -19,6 +37,13 @@ export async function executeTool(
   onAskUser: AskUserCallback
 ): Promise<ToolResult> {
   try {
+    const missing = missingRequiredParams(toolName, input);
+    if (missing.length > 0) {
+      const names = missing.map((n) => `'${n}'`).join(", ");
+      const verb = missing.length === 1 ? "parameter is" : "parameters are";
+      return { result: `${names} ${verb} required.`, isError: true };
+    }
+
     switch (toolName) {
       case "read_document":
         return await readDocument(app, input);
@@ -103,22 +128,13 @@ async function editDocument(
   input: Record<string, unknown>
 ): Promise<ToolResult> {
   const operation = input.operation as string;
-  const content = input.content as string | undefined;
+  const content = input.content as string;
   const find = input.find as string | undefined;
   const position = input.position as string | undefined;
 
   const file = resolveFile(app, input.path as string | undefined);
   if (!file) {
     return { result: input.path ? `File not found: ${input.path}` : "No active document open.", isError: true };
-  }
-
-  // `content` is schema-required, but the model can still omit it, and all three
-  // operations write it. Reject rather than coerce: the concatenations below
-  // splice the literal string "undefined" into the note, and defaulting to ""
-  // would blank the file outright on replace_all. Test for undefined, not
-  // falsiness — `content: ""` legitimately deletes the found text.
-  if (content === undefined) {
-    return { result: "'content' parameter is required.", isError: true };
   }
 
   switch (operation) {
