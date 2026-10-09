@@ -81,6 +81,12 @@ export interface SelectionScope {
 export interface ToolResult {
   result: string;
   isError: boolean;
+  /** Optional before/after snapshot for rendering an edit diff in the UI. */
+  diff?: {
+    path: string;
+    before: string;
+    after: string;
+  };
 }
 
 // ─── Agent Loop Callbacks ───────────────────────────────────────────────────

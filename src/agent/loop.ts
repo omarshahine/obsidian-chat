@@ -17,8 +17,10 @@ import { buildSystemPrompt, buildContextMessage } from "./system-prompt";
 const MAX_CONVERSATION_LENGTH = 50;
 const KEEP_RECENT = 40;
 
-// Debug logging: writes transcript to the vault's plugin config folder
-const DEBUG = true;
+// Debug logging: writes transcript to the vault's plugin config folder.
+// Off in releases: it appends every prompt verbatim, never rotates, and the
+// plugin folder syncs between devices. Flip locally when you need it.
+const DEBUG = false;
 
 function debugLog(app: App, label: string, data: unknown): void {
   if (!DEBUG) return;
@@ -33,6 +35,31 @@ function debugLog(app: App, label: string, data: unknown): void {
   } catch {
     // Debug logging should never break the app
   }
+}
+
+/** The user's own message, as opposed to a user message carrying tool results. */
+function isTurnStart(message: UnifiedMessage): boolean {
+  return message.role === "user" && typeof message.content === "string";
+}
+
+/**
+ * The last `max` messages or so, starting on a user turn. A plain tail slice can
+ * start on an assistant message, or on a tool_result whose tool_use was cut
+ * off, and the API rejects both. So the cut moves forward to the next turn,
+ * or, if no turn starts inside the window, back to the start of the one it's
+ * in. With no `max`, this only drops a partial turn from the front.
+ */
+export function trimToTurns(messages: UnifiedMessage[], max = messages.length): UnifiedMessage[] {
+  if (messages.length === 0) return messages;
+  const cut = Math.max(0, messages.length - max);
+  let start = cut;
+  while (start < messages.length && !isTurnStart(messages[start])) start++;
+  if (start === messages.length) {
+    start = cut;
+    while (start > 0 && !isTurnStart(messages[start])) start--;
+    if (!isTurnStart(messages[start])) return [];
+  }
+  return start === 0 ? messages : messages.slice(start);
 }
 
 /**
@@ -85,7 +112,9 @@ export class AgentLoop {
 
   /** Restore API messages from persistence */
   importMessages(messages: UnifiedMessage[]): void {
-    this.messages = messages;
+    // Earlier versions saved with a plain tail slice, so a stored history can
+    // start mid-turn. Repair that here rather than fail on the next send.
+    this.messages = trimToTurns(messages);
   }
 
   /** Export the provider chaining state for persistence */
@@ -298,7 +327,7 @@ export class AgentLoop {
   /** Drop oldest messages when conversation gets too long, keeping recent context */
   private pruneHistory(): void {
     if (this.messages.length > MAX_CONVERSATION_LENGTH) {
-      this.messages = this.messages.slice(-KEEP_RECENT);
+      this.messages = trimToTurns(this.messages, KEEP_RECENT);
     }
   }
 }
