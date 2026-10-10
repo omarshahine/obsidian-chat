@@ -147,11 +147,15 @@ tag() {
   [[ "$ci" == "completed success" ]] || die "main CI on ${sha:0:7} is '${ci:-not found}', not 'completed success'."
 
   echo "==> Building"
-  npm run build >/dev/null
-  for f in "${ASSETS[@]}"; do
-    [[ -f "$f" ]] || die "missing release asset $f"
-  done
-  [[ -z "$(git status --porcelain)" ]] || die "build changed tracked files."
+  # The build overwrites main.js, so a dry run only prints it and skips the
+  # checks on its output.
+  run npm run build
+  if (( ! DRY_RUN )); then
+    for f in "${ASSETS[@]}"; do
+      [[ -f "$f" ]] || die "missing release asset $f"
+    done
+    [[ -z "$(git status --porcelain)" ]] || die "build changed tracked files."
+  fi
 
   echo "==> Tagging $VERSION at ${sha:0:7}"
   # Signed and annotated, no "v" prefix, matching earlier releases.
