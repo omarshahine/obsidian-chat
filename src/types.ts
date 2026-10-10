@@ -86,6 +86,14 @@ export interface SelectionScope {
 export interface ToolResult {
   result: string;
   isError: boolean;
+  /**
+   * The vault path the tool acted on, when it acted on exactly one file.
+   *
+   * Rendered as a link in the chat so a result can be navigated back to. It is
+   * resolved by the executor rather than read off the tool input, because the
+   * tools that fall back to the active document have no path in their input.
+   */
+  path?: string;
   /** Optional before/after snapshot for rendering an edit diff in the UI. */
   diff?: {
     path: string;

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { App, Component as ObsidianComponent } from "obsidian";
-  import { MarkdownRenderer } from "obsidian";
+  import { Keymap, MarkdownRenderer, Notice } from "obsidian";
   import type { ToolResult, SelectionScope } from "../types";
   import { lineDiff } from "../util/diff";
 
@@ -233,6 +233,31 @@
     return name.replace(/_/g, " ");
   }
 
+  /**
+   * Short, readable label for a vault path: the file name, without the `.md`
+   * that every note carries. The full path stays in the link's tooltip.
+   */
+  function fileLabel(path: string): string {
+    const name = path.split("/").pop() ?? path;
+    return name.endsWith(".md") ? name.slice(0, -3) : name;
+  }
+
+  /**
+   * Open the note a tool touched, so a result can be navigated back to.
+   *
+   * `getLeaf()` with the event's modifiers matches Obsidian's own links —
+   * plain click reuses the last main-area pane, mod-click opens a tab/split.
+   */
+  function openPath(path: string, event: MouseEvent): void {
+    event.preventDefault();
+    const file = app.vault.getFileByPath(path);
+    if (!file) {
+      new Notice(`${path} is no longer in the vault.`);
+      return;
+    }
+    void app.workspace.getLeaf(Keymap.isModEvent(event)).openFile(file);
+  }
+
   function truncate(str: string, max: number): string {
     if (str.length <= max) return str;
     return str.substring(0, max) + "\n... (truncated)";
@@ -305,15 +330,30 @@
               {msg.toolResult?.isError ? "\u2718" : "\u2714"}
             </span>
             <span class="ochat-tool-name">{formatToolName(msg.toolName ?? "")}</span>
+            {#if msg.toolResult?.path}
+              {@const path = msg.toolResult.path}
+              <a
+                class="ochat-file-link"
+                href={path}
+                title={path}
+                onclick={(e) => openPath(path, e)}
+              >{fileLabel(path)}</a>
+            {/if}
           </div>
           <details class="ochat-tool-details">
             <summary>{msg.toolResult?.isError ? "Error" : "Result"}</summary>
             {#if msg.toolResult?.diff && !diffTooLarge(msg.toolResult.diff)}
+              {@const diffPath = msg.toolResult.diff.path}
               {#if msg.toolResult.result}
                 <div class="ochat-diff-summary">{msg.toolResult.result}</div>
               {/if}
               <div class="ochat-diff">
-                <div class="ochat-diff-path">{msg.toolResult.diff.path}</div>
+                <a
+                  class="ochat-diff-path ochat-file-link"
+                  href={diffPath}
+                  title={diffPath}
+                  onclick={(e) => openPath(diffPath, e)}
+                >{diffPath}</a>
                 {#each lineDiff(msg.toolResult.diff.before, msg.toolResult.diff.after) as row}
                   <div class="ochat-diff-row ochat-diff-{row.type}">
                     <span class="ochat-diff-gutter">{row.type === "add" ? "+" : row.type === "del" ? "-" : " "}</span><span class="ochat-diff-text">{row.text}</span>
@@ -536,6 +576,24 @@
 
   .ochat-tool-name {
     font-weight: 500;
+    flex-shrink: 0;
+  }
+
+  /* The path a tool acted on: click to open the note. Ellipsized rather than
+     wrapped, so a deep path never pushes the row wider than the pane. */
+  .ochat-file-link {
+    color: var(--link-color);
+    text-decoration: none;
+    cursor: pointer;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ochat-file-link:hover {
+    color: var(--link-color-hover, var(--link-color));
+    text-decoration: underline;
   }
 
   .ochat-tool-success {
@@ -587,9 +645,9 @@
   }
 
   .ochat-diff-path {
+    display: block;
     padding: 3px 8px;
     background: var(--background-secondary);
-    color: var(--text-faint);
     border-bottom: 1px solid var(--background-modifier-border);
     white-space: nowrap;
     overflow: hidden;
