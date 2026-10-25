@@ -222,11 +222,69 @@
   // Use action for markdown rendering
   function markdown(node: HTMLElement, text: string) {
     renderMarkdown(node, text);
+    // Obsidian only resolves internal links for panes that are backed by a
+    // file; a chat pane is not one, so rendered [[wikilinks]] and relative
+    // markdown links sit there inert unless we navigate them ourselves.
+    node.addEventListener("click", handleLinkClick);
+    node.addEventListener("auxclick", handleLinkClick);
     return {
       update(newText: string) {
         renderMarkdown(node, newText);
       },
+      destroy() {
+        node.removeEventListener("click", handleLinkClick);
+        node.removeEventListener("auxclick", handleLinkClick);
+      },
     };
+  }
+
+  /**
+   * Which pane a click asks for: mod-click a new tab or split, middle-click a
+   * new tab, plain click the last-used main-area pane. Same rules as
+   * Obsidian's own links, so the chat does not feel like an exception.
+   */
+  function panePreference(event: MouseEvent): ReturnType<typeof Keymap.isModEvent> {
+    return event.button === 1 ? "tab" : Keymap.isModEvent(event);
+  }
+
+  /**
+   * Open an internal link clicked inside a rendered message.
+   *
+   * External links are left alone — the browser and Obsidian already handle
+   * those. Links are resolved against the note you are currently looking at,
+   * which is what makes a bare `[[Note]]` behave the way it would in that
+   * note, and are checked before opening so a link to something that is not
+   * in the vault says so instead of creating an empty note.
+   */
+  function handleLinkClick(event: MouseEvent): void {
+    // auxclick covers every non-primary button; only middle-click navigates.
+    if (event.type === "auxclick" && event.button !== 1) return;
+
+    const anchor = (event.target as HTMLElement | null)?.closest("a");
+    if (!anchor) return;
+
+    // data-href is what Obsidian puts the link target in; requiring it (or the
+    // internal-link class) keeps footnote and tag anchors out of here.
+    const raw = anchor.getAttribute("data-href");
+    const href = raw ?? (anchor.classList.contains("internal-link") ? anchor.getAttribute("href") : null);
+    if (!href) return;
+
+    // Stop here rather than let the click bubble on to anything else.
+    event.preventDefault();
+    event.stopPropagation();
+
+    const sourcePath = app.workspace.getActiveFile()?.path ?? "";
+    // Obsidian decodes Markdown links during rendering; wikilinks stay
+    // literal. Decoding again could silently open a different note.
+    const target = href.split("#")[0];
+    // An empty target resolves to the source note, or null when there is no
+    // active note. Validate it too so openLinkText cannot create a new file.
+    if (app.metadataCache.getFirstLinkpathDest(target, sourcePath) === null) {
+      new Notice(target ? `No note matching "${target}" in the vault.` : "No active note for this link.");
+      return;
+    }
+
+    void app.workspace.openLinkText(href, sourcePath, panePreference(event));
   }
 
   function formatToolName(name: string): string {
@@ -255,7 +313,7 @@
       new Notice(`${path} is no longer in the vault.`);
       return;
     }
-    void app.workspace.getLeaf(Keymap.isModEvent(event)).openFile(file);
+    void app.workspace.getLeaf(panePreference(event)).openFile(file);
   }
 
   function truncate(str: string, max: number): string {
@@ -337,6 +395,7 @@
                 href={path}
                 title={path}
                 onclick={(e) => openPath(path, e)}
+                onauxclick={(e) => e.button === 1 && openPath(path, e)}
               >{fileLabel(path)}</a>
             {/if}
           </div>
@@ -353,6 +412,7 @@
                   href={diffPath}
                   title={diffPath}
                   onclick={(e) => openPath(diffPath, e)}
+                  onauxclick={(e) => e.button === 1 && openPath(diffPath, e)}
                 >{diffPath}</a>
                 {#each lineDiff(msg.toolResult.diff.before, msg.toolResult.diff.after) as row}
                   <div class="ochat-diff-row ochat-diff-{row.type}">
