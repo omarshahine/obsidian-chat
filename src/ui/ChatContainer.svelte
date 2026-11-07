@@ -11,6 +11,8 @@
     toolName?: string;
     toolInput?: Record<string, unknown>;
     toolResult?: ToolResult;
+    /** On a user message: the editor selection that was sent with it. */
+    selection?: SelectionScope;
   }
 
   interface Props {
@@ -73,8 +75,8 @@
 
   // ─── Public API (called from chat-view.ts / chat-modal.ts) ────────────
 
-  export function addUserMessage(text: string): void {
-    messages.push({ id: nextId++, type: "user", text });
+  export function addUserMessage(text: string, selection?: SelectionScope): void {
+    messages.push({ id: nextId++, type: "user", text, selection });
   }
 
   export function addAssistantMessage(text: string): void {
@@ -360,6 +362,16 @@
   <div class="ochat-messages" bind:this={messagesEl}>
     {#each messages as msg (msg.id)}
       {#if msg.type === "user"}
+        {#if msg.selection}
+          <!-- The selection sent with this message: a chip above it, tap to read -->
+          <details class="ochat-msg-selection">
+            <summary>
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path><path d="M13 8H7"></path><path d="M17 12H7"></path></svg>
+              <span class="ochat-msg-selection-label">Selection from {msg.selection.filePath.split("/").pop() || "note"}</span>
+            </summary>
+            <div class="ochat-msg-selection-full">{msg.selection.text}</div>
+          </details>
+        {/if}
         <div class="ochat-msg ochat-user-msg">
           <div class="ochat-msg-content">{msg.text}</div>
         </div>
@@ -591,6 +603,64 @@
     background: var(--interactive-accent);
     color: var(--text-on-accent);
     border-bottom-right-radius: var(--radius-s);
+  }
+
+  .ochat-msg-selection {
+    align-self: flex-end;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    max-width: 90%;
+    margin-bottom: -4px;
+    font-size: var(--font-ui-smaller);
+  }
+
+  .ochat-msg-selection summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    padding: 2px 10px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-l);
+    color: var(--text-muted);
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .ochat-msg-selection summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .ochat-msg-selection summary:hover,
+  .ochat-msg-selection[open] summary {
+    color: var(--text-normal);
+    border-color: var(--interactive-accent);
+  }
+
+  .ochat-msg-selection summary svg {
+    flex-shrink: 0;
+  }
+
+  .ochat-msg-selection-label {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .ochat-msg-selection-full {
+    margin-top: 4px;
+    padding: 6px 10px;
+    max-height: 240px;
+    overflow-y: auto;
+    border-left: 2px solid var(--background-modifier-border);
+    border-radius: var(--radius-s);
+    background: var(--background-secondary);
+    color: var(--text-muted);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    -webkit-user-select: text;
+    user-select: text;
   }
 
   .ochat-assistant-msg {

@@ -210,7 +210,7 @@ export class AgentLoop {
         `[Selection scope: The user has selected text in ${selection.filePath}. Work only within this selection. When using edit_document, use find_replace with text from within this selection. Do not modify text outside the selection.]`,
         "",
         `Selected text:`,
-        `> ${selection.text}`,
+        selection.text.split("\n").map((line) => `> ${line}`).join("\n"),
         "",
         userMessage,
       ].join("\n");
