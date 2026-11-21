@@ -123,6 +123,8 @@ export interface AgentCallbacks {
 export interface ChatHistoryEntry {
   type: string;
   text?: string;
+  /** On a "user" entry: the editor selection sent along with the message. */
+  selection?: SelectionScope;
   toolName?: string;
   toolInput?: Record<string, unknown>;
   toolResult?: ToolResult;
