@@ -32,7 +32,7 @@ export async function sendOpenAIMessage(
   const model = settings.model || "gpt-5.3-codex";
 
   // Build input: only the NEW items for this turn
-  const input = buildCurrentTurnInput(messages, systemPrompt, state);
+  const input = buildCurrentTurnInput(messages, state);
 
   const body: Record<string, unknown> = {
     model,
@@ -108,25 +108,20 @@ export async function sendOpenAIMessage(
 /**
  * Builds input items for the current turn only.
  * When using previous_response_id, we only need to send:
- * - On first call: system message + user message
+ * - On first call: the messages so far (the system prompt goes in
+ *   `instructions` on every call, never into the chain, where a copy would
+ *   outlive a change to it)
  * - On tool result calls: function_call_output items
  * - On follow-up user messages: user message
  */
 function buildCurrentTurnInput(
   messages: UnifiedMessage[],
-  systemPrompt: string,
   state: OpenAIConversationState
 ): Record<string, unknown>[] {
   const items: Record<string, unknown>[] = [];
 
   // If no previous response (first call), include all messages
   if (!state.previousResponseId) {
-    items.push({
-      type: "message",
-      role: "developer",
-      content: systemPrompt,
-    });
-
     for (const msg of messages) {
       // Assistant turns are stored as content blocks, never plain strings, so
       // reading only string content would drop every reply. Tool calls and
