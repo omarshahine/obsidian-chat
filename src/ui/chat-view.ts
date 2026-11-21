@@ -83,7 +83,7 @@ export class ObsidianChatView extends ItemView {
     for (const msg of active.chatHistory) {
       switch (msg.type) {
         case "user":
-          chat.addUserMessage(msg.text!);
+          chat.addUserMessage(msg.text!, msg.selection);
           break;
         case "assistant":
           chat.addAssistantMessage(msg.text!);
@@ -174,8 +174,8 @@ export class ObsidianChatView extends ItemView {
 
     this.running = true;
     const turn = ++this.turn;
-    chat.addUserMessage(text);
-    history.push({ type: "user", text });
+    chat.addUserMessage(text, selection ?? undefined);
+    history.push(selection ? { type: "user", text, selection } : { type: "user", text });
     session.maybeTitleFrom(text);
     session.touch();
     chat.setSessions(
