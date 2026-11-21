@@ -127,7 +127,7 @@
 
   export function setInputEnabled(enabled: boolean): void {
     inputEnabled = enabled;
-    placeholder = enabled ? "Ask anything..." : "Waiting for response...";
+    placeholder = enabled ? "Ask anything..." : "Reply in progress...";
   }
 
   export function clearMessages(): void {
@@ -177,11 +177,16 @@
   // ─── Internal handlers ────────────────────────────────────────────────
 
   function handleSend(): void {
+    // The textarea stays enabled during a turn (disabling it would blur it and
+    // drop the mobile keyboard), so sending is blocked here instead.
+    if (!inputEnabled) return;
     const text = inputText.trim();
     if (!text) return;
 
     inputText = "";
     resetHeight();
+    // Restore keyboard-button focus on this explicit send, before the reply runs.
+    textareaEl?.focus();
 
     if (askUserResolve) {
       addUserMessage(text);
@@ -205,6 +210,15 @@
       e.preventDefault();
       handleSend();
     }
+  }
+
+  /**
+   * Tapping send/stop shouldn't pull focus (and the mobile keyboard) off the
+   * textarea. Focus moves as the default action of mousedown (touch taps fire
+   * a compat one), so that is what has to be cancelled, not pointerdown.
+   */
+  function keepFocus(e: MouseEvent): void {
+    e.preventDefault();
   }
 
   function autoGrow(): void {
@@ -480,7 +494,6 @@
       bind:this={textareaEl}
       bind:value={inputText}
       {placeholder}
-      disabled={!inputEnabled}
       rows="1"
       onkeydown={handleKeydown}
       oninput={autoGrow}
@@ -488,6 +501,7 @@
     {#if inputEnabled}
       <button
         class="ochat-send-btn"
+        onmousedown={keepFocus}
         onclick={handleSend}
         aria-label="Send message"
       >
@@ -496,6 +510,7 @@
     {:else}
       <button
         class="ochat-send-btn ochat-stop-btn"
+        onmousedown={keepFocus}
         onclick={onStop}
         aria-label="Stop generation"
       >
@@ -906,10 +921,6 @@
     outline: none;
     border-color: var(--interactive-accent);
     box-shadow: none;
-  }
-
-  .ochat-input:disabled {
-    opacity: 0.5;
   }
 
   .ochat-send-btn {

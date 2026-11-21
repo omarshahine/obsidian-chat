@@ -232,7 +232,6 @@ export class ObsidianChatView extends ItemView {
       if (turn === this.turn) {
         this.running = false;
         chat.setInputEnabled(true);
-        chat.focus();
       }
       // Persist after each turn
       this.plugin.saveChatHistory();
