@@ -19,7 +19,7 @@ const viewCode = ts.transpileModule(fs.readFileSync('src/ui/chat-view.ts', 'utf8
 
 function fixture({ immediate = false } = {}) {
   let active = 'textarea', focusCalls = 0, saved = 0, pending;
-  const turns = [], notices = [], sent = [], answers = [];
+  const turns = [], callbacks = [], notices = [], sent = [], answers = [];
   const context = vm.createContext({
     inputText: '', inputEnabled: true, placeholder: 'Ask anything...', selection: null,
     askUserResolve: null, textareaEl: { style: {}, focus() { active = 'textarea'; focusCalls++; } },
@@ -29,7 +29,8 @@ function fixture({ immediate = false } = {}) {
   });
   vm.runInContext(handlers, context);
   const session = { id: 'test', title: 'Test', chatHistory: [], touch() {}, maybeTitleFrom() {}, agent: {
-    run() {
+    run(_prompt, handlers) {
+      callbacks.push(handlers);
       if (immediate) return Promise.resolve();
       return new Promise(resolve => turns.push(resolve));
     }, abort() {}, clear() {},
@@ -50,7 +51,7 @@ function fixture({ immediate = false } = {}) {
     showAskUser: context.showAskUser, cancelAskUser: context.cancelAskUser,
     addUserMessage() {}, setSessions() {}, hideThinking() {}, clearMessages() {},
   };
-  return { context, view, turns, sent, answers, notices,
+  return { context, view, turns, callbacks, sent, answers, notices,
     get active() { return active; }, get focusCalls() { return focusCalls; }, get saved() { return saved; },
     moveFocus(target = 'other pane') { active = target; },
     send(text = 'hello') { context.inputText = text; context.handleSend(); return pending; },
@@ -213,3 +214,27 @@ for (const cancel of ['handleClear', 'onClose']) {
     await pending;
   });
 }
+
+
+test('a canceled question callback cannot disable the next turn’s pending answer', async () => {
+  const f = fixture();
+  const oldTurn = f.send('first prompt');
+  const oldQuestion = f.callbacks[0].onAskUser('Which note first?');
+  f.view.handleClear();
+
+  // The first question's async callback resumes in a microtask. Start an
+  // independent turn with its own question before that continuation runs.
+  const newTurn = f.send('next prompt');
+  const newQuestion = f.callbacks[1].onAskUser('Which note next?');
+  assert.equal(await oldQuestion, '');
+  assert.equal(f.context.inputEnabled, true);
+  assert.equal(f.context.placeholder, 'Type your answer...');
+  f.send('the second note');
+  assert.equal(await newQuestion, 'the second note');
+  assert.equal(f.context.inputEnabled, false);
+
+  f.turns[0]();
+  f.turns[1]();
+  await Promise.all([oldTurn, newTurn]);
+  assert.equal(f.context.inputEnabled, true);
+});
