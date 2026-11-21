@@ -170,6 +170,7 @@ export default class ChatPlugin extends Plugin {
       new Notice("Please configure your API key in Obsidian Chat settings.");
       return;
     }
+    if (this.getChatView()?.canSwitchSession() === false) return;
     this.sessions.createOrReuseEmpty();
     await this.activateView();
     const view = this.getChatView();
@@ -185,6 +186,7 @@ export default class ChatPlugin extends Plugin {
       new Notice("Please configure your API key in Obsidian Chat settings.");
       return;
     }
+    if (this.getChatView()?.canSwitchSession() === false) return;
     this.sessions.createOrReuseEmpty();
     await this.activateView();
     const view = this.getChatView();
@@ -203,6 +205,7 @@ export default class ChatPlugin extends Plugin {
       new Notice("Please configure your API key in Obsidian Chat settings.");
       return;
     }
+    if (this.getChatView()?.canSwitchSession() === false) return;
     this.sessions.createOrReuseEmpty();
     await this.activateView();
     this.getChatView()?.renderActiveSession();

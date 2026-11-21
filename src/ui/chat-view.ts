@@ -108,20 +108,25 @@ export class ObsidianChatView extends ItemView {
    * Switch which session the view shows. Refuses mid-turn so a running
    * agent's callbacks cannot write into the wrong transcript.
    */
-  private switchSession(id: string): void {
-    if (this.running) {
-      new Notice("Please wait for the current response to complete.");
-      this.renderActiveSession();
-      return;
-    }
-    if (!this.plugin.sessions.setActive(id)) return;
+  private switchSession(id: string): boolean {
+    if (!this.canSwitchSession() || !this.plugin.sessions.setActive(id)) return false;
     this.renderActiveSession();
     void this.plugin.saveChatHistory();
+    return true;
+  }
+
+  /** Keep a pending question or response attached to its original session. */
+  canSwitchSession(): boolean {
+    if (!this.running) return true;
+    new Notice("Please wait for the current response to complete.");
+    return false;
   }
 
   async onClose(): Promise<void> {
     this.plugin.sessions.active().agent.abort();
+    this.turn++;
     if (this.chatContainer) {
+      this.chatContainer.cancelAskUser();
       unmount(this.chatContainer);
       this.chatContainer = undefined;
     }
@@ -214,7 +219,7 @@ export class ObsidianChatView extends ItemView {
           chat.hideThinking();
           chat.setInputEnabled(true);
           const answer = await chat.showAskUser(question);
-          chat.setInputEnabled(false);
+          if (turn === this.turn) chat.setInputEnabled(false);
           return answer;
         },
         onError: (error) => {
@@ -244,6 +249,7 @@ export class ObsidianChatView extends ItemView {
     this.running = false;
     const chat = this.chatContainer;
     if (chat) {
+      chat.cancelAskUser();
       chat.hideThinking();
       chat.setInputEnabled(true);
       chat.focus();
@@ -254,6 +260,7 @@ export class ObsidianChatView extends ItemView {
   private handleClear(): void {
     const session = this.plugin.sessions.active();
     session.agent.abort();
+    this.chatContainer?.cancelAskUser();
     session.agent.clear();
     session.chatHistory = [];
     session.touch();

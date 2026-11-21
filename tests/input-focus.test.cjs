@@ -9,7 +9,7 @@ const ts = require('typescript');
 const component = fs.readFileSync('src/ui/ChatContainer.svelte', 'utf8');
 const script = component.match(/<script lang="ts">([\s\S]*?)<\/script>/)[1];
 const ast = ts.createSourceFile('ChatContainer.ts', script, ts.ScriptTarget.Latest, true);
-const names = new Set(['handleSend', 'handleKeydown', 'keepFocus', 'resetHeight', 'setInputEnabled', 'focus']);
+const names = new Set(['handleSend', 'handleKeydown', 'keepFocus', 'resetHeight', 'setInputEnabled', 'focus', 'showAskUser', 'cancelAskUser', 'handleSessionChange']);
 const declarations = ast.statements.filter(node => ts.isFunctionDeclaration(node) && names.has(node.name?.text));
 assert.equal(declarations.length, names.size);
 const handlers = ts.transpile(declarations.map(node => node.getText(ast).replace(/^export /, '')).join('\n'), { target: ts.ScriptTarget.ES2022 });
@@ -24,6 +24,7 @@ function fixture({ immediate = false } = {}) {
     inputText: '', inputEnabled: true, placeholder: 'Ask anything...', selection: null,
     askUserResolve: null, textareaEl: { style: {}, focus() { active = 'textarea'; focusCalls++; } },
     addUserMessage: text => answers.push(text),
+    addAssistantMessage() {},
     onSend: (text, selection) => { sent.push({ text, selection }); pending = view.handleUserMessage(text, selection); },
   });
   vm.runInContext(handlers, context);
@@ -46,6 +47,7 @@ function fixture({ immediate = false } = {}) {
   const view = new exports.ObsidianChatView({}, plugin);
   view.chatContainer = {
     setInputEnabled: context.setInputEnabled, focus: context.focus,
+    showAskUser: context.showAskUser, cancelAskUser: context.cancelAskUser,
     addUserMessage() {}, setSessions() {}, hideThinking() {},
   };
   return { context, view, turns, sent, answers, notices,
@@ -154,4 +156,45 @@ test('answering ask_user keeps its answer path and restores explicit-send focus'
   assert.deepEqual(f.answers, ['answer']);
   assert.equal(f.sent.length, 0);
   assert.equal(f.active, 'textarea');
+});
+
+
+test('pending question cue follows the free-text answer lifecycle', async () => {
+  const f = fixture();
+  assert.equal(f.context.askUserResolve, null);
+  const answer = f.context.showAskUser('Which note?');
+  assert.equal(typeof f.context.askUserResolve, 'function');
+  assert.equal(f.context.placeholder, 'Type your answer...');
+  f.send('the second note');
+  assert.equal(await answer, 'the second note');
+  assert.equal(f.context.askUserResolve, null);
+});
+
+test('stopping a pending question releases it and next send starts a new turn', async () => {
+  const f = fixture({ immediate: true });
+  const answer = f.context.showAskUser('Which note?');
+  f.view.handleStop();
+  assert.equal(await answer, '');
+  assert.equal(f.context.askUserResolve, null);
+  assert.equal(f.context.placeholder, 'Ask anything...');
+  await f.send('new message');
+  assert.equal(f.sent[0].text, 'new message');
+  assert.deepEqual(f.answers, []);
+});
+
+
+test('a rejected switch restores the selected chat without rebuilding a pending transcript', async () => {
+  const f = fixture();
+  f.context.activeSessionId = 'test';
+  f.context.onSelectSession = id => f.view.switchSession(id);
+  const pending = f.send();
+  const question = f.context.showAskUser('Which note?');
+  const select = { value: 'other' };
+  f.context.handleSessionChange({ currentTarget: select });
+  assert.equal(select.value, 'test');
+  assert.equal(typeof f.context.askUserResolve, 'function');
+  f.send('the second note');
+  assert.equal(await question, 'the second note');
+  f.turns[0]();
+  await pending;
 });
