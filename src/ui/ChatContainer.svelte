@@ -196,6 +196,9 @@
   }
 
   function handleKeydown(e: KeyboardEvent): void {
+    // Enter confirms an IME candidate (CJK input); it must not send. keyCode
+    // 229 covers browsers that fire keydown after compositionend.
+    if (e.isComposing || e.keyCode === 229) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
