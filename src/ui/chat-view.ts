@@ -125,6 +125,7 @@ export class ObsidianChatView extends ItemView {
   async onClose(): Promise<void> {
     this.plugin.sessions.active().agent.abort();
     this.turn++;
+    this.running = false;
     if (this.chatContainer) {
       this.chatContainer.cancelAskUser();
       unmount(this.chatContainer);

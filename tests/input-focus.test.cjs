@@ -32,13 +32,13 @@ function fixture({ immediate = false } = {}) {
     run() {
       if (immediate) return Promise.resolve();
       return new Promise(resolve => turns.push(resolve));
-    }, abort() {},
+    }, abort() {}, clear() {},
   } };
   const plugin = { sessions: { active: () => session, list: () => [session] }, saveChatHistory() { saved++; } };
   const exports = {};
   const host = vm.createContext({ exports, require(name) {
     if (name === 'obsidian') return { ItemView: class {}, Notice: function(text) { notices.push(text); } };
-    if (name === 'svelte') return {};
+    if (name === 'svelte') return { unmount() {} };
     if (name === './ChatContainer.svelte') return {};
     if (name === '../settings') return {};
     throw new Error('Unexpected import: ' + name);
@@ -48,7 +48,7 @@ function fixture({ immediate = false } = {}) {
   view.chatContainer = {
     setInputEnabled: context.setInputEnabled, focus: context.focus,
     showAskUser: context.showAskUser, cancelAskUser: context.cancelAskUser,
-    addUserMessage() {}, setSessions() {}, hideThinking() {},
+    addUserMessage() {}, setSessions() {}, hideThinking() {}, clearMessages() {},
   };
   return { context, view, turns, sent, answers, notices,
     get active() { return active; }, get focusCalls() { return focusCalls; }, get saved() { return saved; },
@@ -198,3 +198,18 @@ test('a rejected switch restores the selected chat without rebuilding a pending 
   f.turns[0]();
   await pending;
 });
+
+
+for (const cancel of ['handleClear', 'onClose']) {
+  test(`${cancel} releases a pending question and frees the current chat`, async () => {
+    const f = fixture();
+    const pending = f.send();
+    const question = f.context.showAskUser('Which note?');
+    await f.view[cancel]();
+    assert.equal(await question, '');
+    assert.equal(f.context.askUserResolve, null);
+    assert.equal(f.view.canSwitchSession(), true);
+    f.turns[0]();
+    await pending;
+  });
+}
