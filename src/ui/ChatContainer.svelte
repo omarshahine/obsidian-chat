@@ -24,7 +24,7 @@
     onClear: () => void;
     onStop: () => void;
     onNewSession: () => void;
-    onSelectSession: (id: string) => void;
+    onSelectSession: (id: string) => boolean;
   }
 
   let {
@@ -125,6 +125,13 @@
     });
   }
 
+  /** Release a paused agent when its turn is aborted, without sending an answer. */
+  export function cancelAskUser(): void {
+    const resolve = askUserResolve;
+    askUserResolve = null;
+    resolve?.("");
+  }
+
   export function setInputEnabled(enabled: boolean): void {
     inputEnabled = enabled;
     placeholder = enabled ? "Ask anything..." : "Reply in progress...";
@@ -151,8 +158,11 @@
   }
 
   function handleSessionChange(event: Event): void {
-    const id = (event.currentTarget as HTMLSelectElement).value;
-    if (id && id !== activeSessionId) onSelectSession(id);
+    const select = event.currentTarget as HTMLSelectElement;
+    const id = select.value;
+    if (id && id !== activeSessionId && !onSelectSession(id)) {
+      select.value = activeSessionId;
+    }
   }
 
   export function setModel(name: string): void {
@@ -487,6 +497,13 @@
     </div>
   {/if}
 
+  <!-- Keep the live region mounted so assistive technology announces the change. -->
+  <div role="status" aria-atomic="true">
+    {#if askUserResolve}
+      <div class="ochat-answer-status">Waiting for your answer</div>
+    {/if}
+  </div>
+
   <!-- Input bar -->
   <div class="ochat-input-bar">
     <textarea
@@ -494,6 +511,7 @@
       bind:this={textareaEl}
       bind:value={inputText}
       {placeholder}
+      aria-label={askUserResolve ? "Answer the question" : "Chat message"}
       rows="1"
       onkeydown={handleKeydown}
       oninput={autoGrow}
@@ -503,7 +521,7 @@
         class="ochat-send-btn"
         onmousedown={keepFocus}
         onclick={handleSend}
-        aria-label="Send message"
+        aria-label={askUserResolve ? "Send answer" : "Send message"}
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
       </button>
@@ -890,6 +908,15 @@
   }
 
   /* ─── Input Bar ─────────────────────────────────────────────────────── */
+  .ochat-answer-status {
+    padding: 6px 12px;
+    border-top: 1px solid var(--background-modifier-border);
+    background: var(--background-secondary);
+    color: var(--text-normal);
+    font-size: var(--font-ui-small);
+    font-weight: var(--font-semibold);
+  }
+
   .ochat-input-bar {
     display: flex;
     align-items: flex-end;
